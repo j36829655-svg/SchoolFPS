@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campus FPS</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9cc4e4; font-family: system-ui, sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 13px; text-shadow: 0 1px 2px #000; pointer-events: none; white-space: pre; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; pointer-events: none; }
+  #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.45); color: #fff; font-size: 22px; cursor: pointer; text-align: center; line-height: 1.6; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="hud"></div>
+<div id="cross"></div>
+<div id="start">클릭해서 시작<br><small>WASD 이동 · Shift 달리기 · Space 점프 · F 비행 모드 · Esc 일시정지</small></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
