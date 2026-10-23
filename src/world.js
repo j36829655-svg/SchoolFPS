@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
 import { TREES } from './data/trees.js';
 import { Terrain } from './terrain.js';
+import { OVERRIDES, PARTS } from './data/details.js';
+import { buildProps } from './props.js';
 
 // 캠퍼스 데이터 → 3D 장면 + 충돌체. 데이터 좌표 (x 동, y 북) → 3D (x, 높이, -y)
 
@@ -15,7 +17,7 @@ const STYLE_BY_ID = {
   kinder: 'brick', sarang: 'dorm', somang: 'dorm', mideum: 'dorm',
   small_mid: 'shed', blue_shed: 'shed', main_sw: 'shed', shed_n: 'shed',
 };
-const BAY = { ribbon: 2, grid: 3, glass: 1.5, remnant: 4, cottage: 4, dorm: 3.5, brick: 3, shed: 3 };
+const BAY = { ribbon: 2, grid: 3, glass: 1.5, remnant: 4, cottage: 4, dorm: 3.5, brick: 3, shed: 3, curtain: 1.5, louver: 1.2, tower: 1.5, concrete: 3.5, rustframe: 6 };
 const PITCH = { gable: 0.3, hip: 0.15, arch: 0.35 };
 
 const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
@@ -24,6 +26,7 @@ export function buildWorld(scene, physics) {
   const terrain = new Terrain();
 
   // 1) 지형 평탄화: 연못 → 운동장/코트 → 건물 터 순서
+  for (const b of CAMPUS.buildings) Object.assign(b, OVERRIDES[b.id]);
   const levels = new Map();
   for (const g of CAMPUS.grounds) {
     const opt = g.type === 'water' ? { margin: 0, blend: 5, offset: -1.6 } : { margin: 1, blend: 6 };
@@ -63,7 +66,13 @@ export function buildWorld(scene, physics) {
   }
   scene.add(amphitheater(a, levels.get(a)));
 
+  for (const p of PARTS) {
+    scene.add(building(p, levels.get(CAMPUS.buildings.find(b => b.id === p.parent))));
+    physics.addPolygon(p.pts);
+  }
+
   addTrees(scene, physics, terrain);
+  buildProps(scene, physics, terrain);
   return terrain;
 }
 
@@ -137,7 +146,7 @@ function road(pts, w, color, terrain) {
 
 function building(b, ground) {
   const group = new THREE.Group();
-  const style = STYLE_BY_ID[b.id] ?? (b.roofType === 'gable' ? 'cottage' : 'grid');
+  const style = b.style ?? STYLE_BY_ID[b.id] ?? (b.roofType === 'gable' ? 'cottage' : 'grid');
   const sloped = b.roofType !== 'flat';
   const o = obb(b.pts);
   const rise = sloped ? Math.min(PITCH[b.roofType] * o.W, b.h * 0.45) : 0;
@@ -151,7 +160,8 @@ function building(b, ground) {
   if (!sloped) {
     group.add(decal(b.pts, top - 0.6, roofMat)); // 0.6m 파라펫 안쪽 평지붕
   } else {
-    group.add(slopedRoof(o, ground + eave, rise, b.roofType, roofMat, new THREE.MeshLambertMaterial({ color: b.wall, side: THREE.DoubleSide })));
+    const endMat = b.endGlass ? new THREE.MeshLambertMaterial({ color: 0x6fa8a8, transparent: true, opacity: 0.6, side: THREE.DoubleSide }) : new THREE.MeshLambertMaterial({ color: b.wall, side: THREE.DoubleSide });
+    group.add(slopedRoof(o, ground + eave, rise, b.roofType, roofMat, endMat));
   }
   return group;
 }
@@ -249,9 +259,7 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
       g.fillStyle = '#c9d6e2'; g.fillRect(0, 0, 4, 104); g.fillRect(0, 50, 128, 3);
       break;
     case 'remnant': // 흰 벽 + 적갈색 프레임 + 파란 유리 (렘넌트)
-      g.fillStyle = accent; g.fillRect(0, 0, 18, 128); g.fillRect(0, 116, 128, 12);
-      g.fillStyle = '#4f86c6'; g.fillRect(56, 18, 64, 80);
-      g.fillStyle = '#a9c4de'; g.fillRect(86, 18, 3, 80);
+      g.fillStyle = '#2f3a44'; g.fillRect(70, 30, 40, 50);
       break;
     case 'cottage': // 흰 사이딩 + 창문 (도서관 등 단층)
       g.strokeStyle = 'rgba(0,0,0,0.08)'; for (let y = 4; y < 128; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); }
@@ -268,6 +276,27 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
       g.strokeStyle = 'rgba(0,0,0,0.18)';
       for (let y = 0; y < 128; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); for (let x = (y / 8) % 2 * 8; x < 128; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } }
       g.fillStyle = '#ffffff'; g.fillRect(36, 30, 56, 50); g.fillStyle = glass; g.fillRect(40, 34, 48, 42);
+      break;
+    case 'rustframe': // 렘넌트 입구의 적갈색 프레임 + 유리
+      g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = '#4f86c6'; g.fillRect(24, 16, 80, 96);
+      break;
+    case 'curtain': // 유리 벽
+      g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = '#c3d3db'; g.fillRect(0, 0, 5, 128); g.fillRect(0, 0, 128, 5);
+      break;
+    case 'louver': // 회색 벽 + 짙은 세로 루버 (아멘관 북쪽 건물)
+      g.fillStyle = '#2f3a44'; g.fillRect(0, 20, 128, 80);
+      g.fillStyle = '#b8bcc0'; for (let x = 0; x < 128; x += 16) g.fillRect(x, 20, 7, 80);
+      break;
+    case 'tower': // 파란 유리 + 적갈색 가로 띠 (렘넌트 유리 탑)
+      g.fillStyle = wall; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = '#a9c4de'; g.fillRect(0, 0, 3, 128); g.fillRect(0, 64, 128, 2);
+      g.fillStyle = accent; g.fillRect(0, 112, 128, 16);
+      break;
+    case 'concrete': // 노출 콘크리트 (기숙사 프레임 탑)
+      g.strokeStyle = 'rgba(0,0,0,0.1)'; for (let y = 0; y < 128; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); }
+      for (let i = 0; i < 12; i++) { g.fillStyle = 'rgba(0,0,0,0.08)'; g.beginPath(); g.arc((i * 41) % 128, (i * 23) % 128, 1.5, 0, 7); g.fill(); }
       break;
     case 'shed':
       g.strokeStyle = 'rgba(0,0,0,0.12)'; for (let x = 0; x < 128; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 128); g.stroke(); }

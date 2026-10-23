@@ -14,7 +14,7 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9cc4e4);
 scene.fog = new THREE.Fog(0x9cc4e4, 120, 520);
-scene.add(new THREE.HemisphereLight(0xdfefff, 0x5b6b45, 1.6));
+scene.add(new THREE.HemisphereLight(0xeef6ff, 0x6b7b55, 2.3));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
 sun.position.set(-120, 200, 80);
 scene.add(sun);
