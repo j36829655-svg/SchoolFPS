@@ -23,19 +23,21 @@ const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 15
 camera.rotation.order = 'YXZ';
 
 const physics = new Physics(CAMPUS.bounds);
-buildWorld(scene, physics);
+const terrain = buildWorld(scene, physics);
+const groundAt = (x, y) => terrain.heightAt(x, y);
 
-const body = new Body(physics, SPAWN.x, SPAWN.y);
+const body = new Body(physics, SPAWN.x, SPAWN.y, groundAt);
 physics.resolve(body.pos, body.radius);
+body.z = groundAt(body.pos.x, body.pos.y);
 let yaw = SPAWN.yaw, pitch = 0, flying = false, flyHeight = 60;
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근)
-window.game = { body, physics, camera, scene, set view(v) { ({ yaw, pitch, flying, flyHeight } = { yaw, pitch, flying, flyHeight, ...v }); } };
+window.game = { body, physics, camera, scene, terrain, set view(v) { ({ yaw, pitch, flying, flyHeight } = { yaw, pitch, flying, flyHeight, ...v }); } };
 
 // ── 입력 ──
 const keys = new Set();
 addEventListener('keydown', e => {
   keys.add(e.code);
-  if (e.code === 'KeyF') { flying = !flying; if (flying) flyHeight = Math.max(body.z + EYE, 40); }
+  if (e.code === 'KeyF') { flying = !flying; if (flying) flyHeight = body.z + 40; else body.z = Math.max(body.z, groundAt(body.pos.x, body.pos.y)); }
 });
 addEventListener('keyup', e => keys.delete(e.code));
 // 마우스 잠금이 안 되는 환경(일부 브라우저, 앱 내장 브라우저)에서도 움직일 수 있게
@@ -92,7 +94,7 @@ function tick() {
     const sp = FLY * (keys.has('ShiftLeft') ? 3 : 1);
     body.pos.x += wish.x * sp * dt; body.pos.y += wish.y * sp * dt;
     if (keys.has('Space')) flyHeight += sp * dt;
-    if (keys.has('KeyC') || keys.has('ControlLeft')) flyHeight = Math.max(2, flyHeight - sp * dt);
+    if (keys.has('KeyC') || keys.has('ControlLeft')) flyHeight = Math.max(groundAt(body.pos.x, body.pos.y) + 2, flyHeight - sp * dt);
     camera.position.set(body.pos.x, flyHeight, -body.pos.y);
   } else {
     body.step(dt, wish, keys.has('ShiftLeft') ? RUN : WALK, active && keys.has('Space'));

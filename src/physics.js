@@ -66,10 +66,11 @@ export class Physics {
 
 /** 1인칭 캐릭터: 가속, 마찰, 중력, 점프, 충돌 */
 export class Body {
-  constructor(physics, x, y) {
+  constructor(physics, x, y, ground = () => 0) {
     this.physics = physics;
+    this.ground = ground; // (x, y) → 땅 높이
     this.pos = { x, y };
-    this.z = 0;      // 발 높이
+    this.z = ground(x, y); // 발 높이 (절대값)
     this.vx = 0; this.vy = 0; this.vz = 0;
     this.radius = 0.4;
     this.onGround = true;
@@ -85,15 +86,20 @@ export class Body {
     if (jump && this.onGround) { this.vz = 6.2; this.onGround = false; }
     this.vz -= 20 * dt;
 
+    const wasGround = this.onGround;
     this.pos.x += this.vx * dt;
     this.pos.y += this.vy * dt;
     this.z += this.vz * dt;
-    if (this.z <= 0) { this.z = 0; this.vz = 0; this.onGround = true; }
 
     const bx = this.pos.x, by = this.pos.y;
     this.physics.resolve(this.pos, this.radius);
     // 벽에 막힌 방향의 속도는 없앤다 (벽에 붙어 미끄러지기)
     if (dt > 0) { this.vx = (this.pos.x - bx) / dt + this.vx; this.vy = (this.pos.y - by) / dt + this.vy; }
+
+    // 땅에 닿기. 내리막에서는 0.6m 이내면 땅에 붙여 통통 튀지 않게 한다
+    const gz = this.ground(this.pos.x, this.pos.y);
+    if (this.z <= gz || (wasGround && this.vz <= 0 && this.z - gz < 0.6)) { this.z = gz; this.vz = 0; this.onGround = true; }
+    else this.onGround = false;
   }
 }
 
