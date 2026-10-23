@@ -38,13 +38,29 @@ addEventListener('keydown', e => {
   if (e.code === 'KeyF') { flying = !flying; if (flying) flyHeight = Math.max(body.z + EYE, 40); }
 });
 addEventListener('keyup', e => keys.delete(e.code));
+// 마우스 잠금이 안 되는 환경(일부 브라우저, 앱 내장 브라우저)에서도 움직일 수 있게
+// '플레이 중' 여부는 직접 관리하고, 잠금이 없으면 마우스 버튼을 누른 채 끌어서 시점을 돌린다.
 const startEl = document.getElementById('start');
-startEl.addEventListener('click', () => renderer.domElement.requestPointerLock());
-document.addEventListener('pointerlockchange', () => {
-  startEl.style.display = document.pointerLockElement ? 'none' : 'flex';
+let playing = false, dragging = false;
+function setPlaying(v) {
+  playing = v;
+  startEl.style.display = v ? 'none' : 'flex';
+  if (!v) keys.clear();
+}
+startEl.addEventListener('click', () => {
+  setPlaying(true);
+  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {}
 });
+let hadLock = false;
+document.addEventListener('pointerlockchange', () => {
+  if (document.pointerLockElement) hadLock = true;
+  else if (hadLock) { hadLock = false; setPlaying(false); } // Esc로 잠금이 풀리면 일시정지
+});
+addEventListener('keydown', e => { if (e.code === 'Escape' && playing && !document.pointerLockElement) setPlaying(false); });
+renderer.domElement.addEventListener('mousedown', () => { dragging = true; });
+addEventListener('mouseup', () => { dragging = false; });
 addEventListener('mousemove', e => {
-  if (!document.pointerLockElement) return;
+  if (!playing || (!document.pointerLockElement && !dragging)) return;
   yaw -= e.movementX * 0.0022;
   pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.0022));
 });
@@ -60,13 +76,13 @@ let fpsT = 0, frames = 0, fps = 0;
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  const active = !!document.pointerLockElement;
+  const active = playing;
 
   // 이동 입력 → 월드 방향 (x 동, y 북). yaw 0 = 북쪽
   let f = 0, s = 0;
   if (active) {
-    if (keys.has('KeyW')) f += 1; if (keys.has('KeyS')) f -= 1;
-    if (keys.has('KeyD')) s += 1; if (keys.has('KeyA')) s -= 1;
+    if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1; if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
+    if (keys.has('KeyD') || keys.has('ArrowRight')) s += 1; if (keys.has('KeyA') || keys.has('ArrowLeft')) s -= 1;
   }
   const len = Math.hypot(f, s) || 1;
   const sin = Math.sin(yaw), cos = Math.cos(yaw);
