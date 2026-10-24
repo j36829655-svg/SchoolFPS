@@ -16,6 +16,9 @@ const ROLE = {
   frame: c => ({ color: c, roughness: 0.4, metalness: 0.5 }),
   trim: c => ({ color: c, map: tiled('concrete', 3), roughness: 0.8 }),
   accent: c => ({ color: c, roughness: 0.7 }),
+  metal: c => ({ color: c, map: tiled('metalroof', 2), roughness: 0.45, metalness: 0.55 }), // 골강판 외벽
+  paint1: c => ({ color: c, roughness: 0.5 }), paint2: c => ({ color: c, roughness: 0.5 }),
+  paint3: c => ({ color: c, roughness: 0.5 }), paint4: c => ({ color: c, roughness: 0.5 }),
 };
 
 export async function loadModels(url = 'assets/models/buildings.glb') {

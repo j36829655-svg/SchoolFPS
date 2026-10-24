@@ -9,7 +9,7 @@ SPEC, OUT = argv[0], argv[1]
 specs = json.load(open(SPEC, encoding='utf-8'))
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
-ROLES = ['wall', 'glass', 'frame', 'trim', 'roof', 'flatroof', 'accent', 'wood', 'concrete']
+ROLES = ['wall', 'glass', 'frame', 'trim', 'roof', 'flatroof', 'accent', 'wood', 'concrete', 'metal', 'paint1', 'paint2', 'paint3', 'paint4']
 R = {r: i for i, r in enumerate(ROLES)}
 
 
@@ -38,6 +38,10 @@ STYLE = {
     'concrete':  dict(kind='none', wall='concrete'),
     'shed':      dict(kind='none', wall='wall', door=True),
     'dorm':      dict(kind='punch', wall='concrete', bay=3.5, w=1.5, h=1.4, sill=0.9, depth=0.2, mullion=1),
+    # 웹 사진 004: 교회 탑 (석재 벽 + 큰 가로 루버 패널 + 가운데 세로창 + 유리 맨 위층 + 어두운 1층)
+    'church':    dict(kind='church', wall='concrete', depth=0.3, mullion=1.2),
+    # 웹 사진 020: 회색 골강판 + 맨 위층 유리 띠 + 중간층 색 세로창 + 움푹 들어간 어두운 1층
+    'metalband': dict(kind='metalband', wall='metal', depth=0.2, mullion=1.5),
 }
 
 
@@ -92,6 +96,27 @@ def openings_for(style, L, z0, floors, fh, top):
                 ops.append((0.5, L - 0.5, fz + 0.9, fz + min(fh - 0.5, 0.9 + 1.5)))
         elif s['kind'] == 'full':
             ops.append((0.12, L - 0.12, fz + 0.12, min(top - 0.15, fz + fh - 0.12)))
+        elif s['kind'] == 'church':
+            if f == 0:
+                ops.append((0.3, L - 0.3, fz + 0.2, fz + fh - 0.3))                  # 어두운 1층 유리
+            elif f == floors - 1:
+                ops.append((0.2, L - 0.2, fz + 0.3, fz + fh - 0.2))                  # 유리 맨 위층
+            elif f == 1:                                                            # 가운데 층들을 덮는 큰 루버 패널 2개 + 세로창
+                v0, v1 = fz + 0.4, z0 + (floors - 1) * fh - 0.4
+                if L >= 5:
+                    p = L * 0.36
+                    ops += [(0.1 * L, 0.1 * L + p, v0, v1, 'slat'), (0.9 * L - p, 0.9 * L, v0, v1, 'slat')]
+                ops.append((L / 2 - 0.45, L / 2 + 0.45, v0, v1))
+        elif s['kind'] == 'metalband':
+            if f == 0:
+                ops.append((0.3, L - 0.3, fz + 0.15, fz + fh - 0.35, 'glass', 0.8))  # 움푹 들어간 어두운 1층
+            elif f == floors - 1:
+                ops.append((0.2, L - 0.2, fz + 0.4, fz + fh - 0.25))                 # 맨 위층 유리 띠
+            else:
+                k = int((L - 1.2) // 2.4)
+                for j in range(k):                                                  # 노랑·초록·빨강·파랑 세로창
+                    cu = 0.6 + 2.4 * (j + 0.5) + (L - 1.2 - 2.4 * k) / 2
+                    ops.append((cu - 0.2, cu + 0.2, fz + 0.5, fz + 0.5 + min(1.9, fh - 0.9), 'color'))
         else:
             n = int(L // s['bay'])
             if n < 1:
@@ -126,8 +151,9 @@ def wall_with_holes(m, A, t, n, L, zb, zt, holes, role):
 
 def window(m, A, t, n, h, s, glass_role='glass', frame_role='frame'):
     """구멍 h=(u0,u1,v0,v1)에 안쪽 측면(리빌), 유리, 창틀·창살, 창턱"""
-    u0, u1, v0, v1 = h
-    d = s.get('depth', 0.15)
+    u0, u1, v0, v1 = h[:4]
+    kind = h[4] if len(h) > 4 else 'glass'
+    d = h[5] if len(h) > 5 else s.get('depth', 0.15)
     T, N = Vector((t[0], t[1], 0)), Vector((n[0], n[1], 0))
     Pw = lambda u, v, dd: tuple(Vector((A[0], A[1], 0)) + T * u - N * dd + Vector((0, 0, v)))
     # 리빌(구멍 안쪽 4면)
@@ -135,11 +161,23 @@ def window(m, A, t, n, h, s, glass_role='glass', frame_role='frame'):
     m.face([Pw(u1, v0, 0), Pw(u1, v1, 0), Pw(u1, v1, d), Pw(u1, v0, d)], 'trim')
     m.face([Pw(u0, v1, 0), Pw(u0, v1, d), Pw(u1, v1, d), Pw(u1, v1, 0)], 'trim')
     m.face([Pw(u0, v0, 0), Pw(u1, v0, 0), Pw(u1, v0, d), Pw(u0, v0, d)], 'trim')
+    w, hh = u1 - u0, v1 - v0
+    if kind == 'slat':  # 가로 루버 패널: 어두운 뒷면 + 0.18m 간격 가로 날개
+        m.face([Pw(u0, v0, d), Pw(u1, v0, d), Pw(u1, v1, d), Pw(u0, v1, d)], 'frame')
+        k = int(hh / 0.18)
+        for i in range(1, k):
+            m.box(Pw((u0 + u1) / 2, v0 + hh * i / k, d * 0.45), T, N, w, 0.035, d * 0.8, 'trim')
+        return
+    if kind == 'color':  # 색 세로창: 위는 유리, 아래는 색 판
+        mid = v0 + hh * 0.45
+        paint = 'paint%d' % (1 + int(abs(A[0] * 7 + A[1] * 3 + u0 * 5)) % 4)
+        m.face([Pw(u0, v0, d), Pw(u1, v0, d), Pw(u1, mid, d), Pw(u0, mid, d)], paint)
+        m.face([Pw(u0, mid, d), Pw(u1, mid, d), Pw(u1, v1, d), Pw(u0, v1, d)], glass_role)
+        return
     # 유리
     m.face([Pw(u0, v0, d), Pw(u1, v0, d), Pw(u1, v1, d), Pw(u0, v1, d)], glass_role)
     # 창틀(테두리) + 창살
     fw = 0.06
-    w, hh = u1 - u0, v1 - v0
     cen = lambda u, v: Pw(u, v, d - 0.03)
     m.box(cen(u0 + fw / 2, (v0 + v1) / 2), T, N, fw, hh, 0.06, frame_role)
     m.box(cen(u1 - fw / 2, (v0 + v1) / 2), T, N, fw, hh, 0.06, frame_role)
@@ -220,6 +258,14 @@ def build(spec):
             m.face([(b[0], b[1], rz), (a[0], a[1], rz), (a[0], a[1], top), (b[0], b[1], top)], 'wall')  # 난간벽 안쪽
             pa, pb = pts[i], pts[(i + 1) % len(pts)]
             m.face([(pa[0], pa[1], top), (pb[0], pb[1], top), (b[0], b[1], top), (a[0], a[1], top)], 'trim')  # 난간 위 마감
+        if spec.get('canopy'):  # 캔틸레버 지붕판: 건물보다 사방 1.8m 크게, 맨 위층 위에 떠 있음 (웹 사진 004)
+            c = (o['cx'], o['cy'], top + 0.6)
+            m.box(c, (o['ux'], o['uy']), (-o['uy'], o['ux']), o['L'] + 3.6, 0.35, o['W'] + 3.6, 'trim')
+            for su in (-1, 1):
+                for sv in (-1, 1):
+                    px = o['cx'] + su * o['L'] / 2 * o['ux'] - sv * o['W'] / 2 * o['uy']
+                    py = o['cy'] + su * o['L'] / 2 * o['uy'] + sv * o['W'] / 2 * o['ux']
+                    m.box((px, py, top + 0.2), (o['ux'], o['uy']), (-o['uy'], o['ux']), 0.15, 0.6, 0.15, 'frame')
     else:
         sloped_roof(m, o, top, rise, spec)
 
@@ -232,7 +278,8 @@ def build(spec):
         col = {'wall': spec['wall'], 'roof': spec['roof'], 'flatroof': spec['roof'], 'accent': accent,
                'glass': {'tower': spec['wall'], 'rustframe': '#4f86c6'}.get(style, accent) if STYLE[style]['kind'] == 'full' else '#3f5f7c',
                'frame': '#ffffff' if style == 'cottage' else '#cfd5da', 'trim': '#d6d4ce', 'wood': '#ffffff',
-               'concrete': spec['wall'] if style in ('concrete', 'brick', 'dormSide', 'dormEnd') else '#c8c8c2'}[role]
+               'concrete': spec['wall'] if style in ('concrete', 'brick', 'dormSide', 'dormEnd', 'church') else '#c8c8c2',
+               'metal': spec['wall'], 'paint1': '#e8c23a', 'paint2': '#4f9a4a', 'paint3': '#c8392f', 'paint4': '#2f5fb0'}[role]
         mat.diffuse_color = lin(col)
         mat.use_nodes = True
         mat.node_tree.nodes['Principled BSDF'].inputs['Base Color'].default_value = lin(col)

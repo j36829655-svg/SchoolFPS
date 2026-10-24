@@ -10,10 +10,11 @@ export function rect(cx, cy, L, W, deg) {
 export const OVERRIDES = {
   amen: { style: 'ribbon' },
   taecho: { style: 'ribbon', h: 11, floors: 2, roof: '#4d5560', endGlass: true }, // 흰 2층 띠창 + 낮은 짙은 금속 아치 지붕, 끝면은 청록 유리 (로드뷰 02·03)
-  main_east: { solar: true }, main_west: { solar: true },            // 항공사진에 보이는 지붕 태양광 패널
-  house_b: { style: 'louver', wall: '#cfd2d4' },                     // 세로 루버가 있는 회색 2층
+  main_east: { solar: true, style: 'metalband', wall: '#8e959b' },  // 회색 골강판 + 위층 유리 띠 + 색 세로창 (웹 사진 020)
+  main_west: { solar: true },                                        // 항공사진에 보이는 지붕 태양광 패널
+  house_b: { style: 'church', h: 14, floors: 4, wall: '#d4d0c6', canopy: true }, // 교회 탑: 석재 벽, 큰 루버 패널, 유리 맨 위층, 캔틸레버 지붕 (웹 사진 004)
   remnant: { h: 8.5, floors: 2, railing: true },                     // 2층 + 3층 높이 유리 탑(아래 parts) + 옥상 난간 (로드뷰 09)
-  girls_dorm: { style: 'grid', wall: '#e6dcc6' },                    // 베이지 벽 + 유리 구역(parts)
+  girls_dorm: { style: 'grid', h: 17, floors: 5, wall: '#eeeeec' },  // 흰 5층 (드론 사진 131·176·184)
   // 사랑·소망·믿음동: 4층 평지붕, 긴 면은 갈색 나무 판, 도로 쪽 끝면은 콘크리트 격자 (로드뷰 15, 17, 22)
   sarang: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
   somang: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
@@ -30,7 +31,8 @@ export const PARTS = [
   { parent: 'sarang', pts: rect(119.4, 110, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
   { parent: 'somang', pts: rect(117.4, 84.5, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
   { parent: 'mideum', pts: rect(115.3, 59.9, 3.5, 3.5, 37), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
-  { parent: 'girls_dorm', pts: rect(126.9, -59.2, 9.4, 4.2, -64.3), h: 12, floors: 3, roofType: 'flat', style: 'glass', wall: '#e6dcc6', accent: '#4f86c6', roof: '#eef0f1' },
+  { parent: 'girls_dorm', pts: rect(126.9, -59.2, 9.4, 4.2, -64.3), h: 17, floors: 5, roofType: 'flat', style: 'glass', wall: '#eeeeec', accent: '#4f86c6', roof: '#eef0f1' },
+  { parent: 'girls_dorm', pts: rect(109.27, -78.29, 5.23, 4.19, 10), h: 19.5, floors: 5, roofType: 'flat', style: 'glass', wall: '#eeeeec', accent: '#4f86c6', roof: '#eef0f1' }, // 앞면 가운데 유리 계단 탑 (드론 사진)
 ];
 
 // 바닥 포장
@@ -40,6 +42,7 @@ export const PAVINGS = [
   { kind: 'gravel', pts: [[146, 140], [158, 142], [160, 156], [150, 156]] },               // 어린이집 앞 자갈 마당
 ];
 export const SIDEWALKS = [
+  { color: '#b5654a', w: 2.2, pts: [[49, -160], [58, -142], [59, -126], [55, -117]] }, // 연못 동쪽 붉은 벽돌 보행로 → 원형 광장 (드론 사진 184)
   { color: '#d9824a', w: 1.6, pts: [[-10, -68], [9, -44]] },                                // 렘넌트 앞 주황 보도
 ];
 

@@ -186,7 +186,7 @@ function building(b, ground) {
   const top = ground + (sloped ? eave : b.h);
 
   BUILDING_SPECS.push({ id: b.id, pts: ccw(b.pts), ground, h: b.h, eave, rise, floors: Math.max(1, b.floors), style, endStyle: b.endStyle ?? null,
-    roofType: b.roofType, wall: b.wall, roof: b.roof, accent: b.accent, endGlass: !!b.endGlass, obb: o });
+    roofType: b.roofType, wall: b.wall, roof: b.roof, accent: b.accent, endGlass: !!b.endGlass, canopy: !!b.canopy, obb: o });
 
   // Blender 모델이 있으면 그것을 쓰고, 지붕 위 설비(태양광·난간)만 덧붙인다
   const model = MODELS?.get(b.id);
@@ -280,17 +280,29 @@ function greenhouse(gh, ground) {
   return slopedRoof({ ...o, L: o.L - 0.8, W: o.W - 0.8 }, ground, Math.min(3.2, o.W * 0.5), 'arch', mat, mat);
 }
 
+/** 원형 광장: 둥근 무대 + 연못 쪽으로 열린 반원형 계단 객석 (석재 단 + 나무 좌석, 드론 사진 184) */
 function amphitheater(a, ground) {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0xb8b2a6 });
-  const steps = 5, inner = a.r * 0.35;
+  const stone = new THREE.MeshStandardMaterial({ color: 0xb8b2a6, map: tiled('concrete', 3), roughness: 0.9 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0xc09a68, map: tiled('woodpanel', 2), roughness: 0.8 });
+  const pond = CAMPUS.grounds.find(x => x.type === 'water').pts;
+  const [px, py] = pond.reduce(([sx, sy], [x, y]) => [sx + x / pond.length, sy + y / pond.length], [0, 0]);
+  const face = Math.atan2(py - a.center[1], px - a.center[0]) + Math.PI; // 객석은 연못 반대편
+  const steps = 6, inner = a.r * 0.42, span = THREE.MathUtils.degToRad(100);
   for (let s = 0; s < steps; s++) {
     const r0 = inner + (a.r - inner) * s / steps, r1 = inner + (a.r - inner) * (s + 1) / steps;
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(r1, r1, 0.45 * (s + 1), 32, 1, false), mat);
-    ring.position.set(a.center[0], ground + 0.225 * (s + 1) - 0.3 * steps + 0.3, -a.center[1]);
-    g.add(ring);
-    if (s === 0) { const stage = new THREE.Mesh(new THREE.CylinderGeometry(r0, r0, 0.2, 32), new THREE.MeshLambertMaterial({ color: 0xd8d2c4 })); stage.position.set(a.center[0], ground + 0.1, -a.center[1]); g.add(stage); }
+    const sh = new THREE.Shape();
+    sh.absarc(0, 0, r1, face - span, face + span, false);
+    sh.absarc(0, 0, r0, face + span, face - span, true);
+    const geo = new THREE.ExtrudeGeometry(sh, { depth: 0.42 * (s + 1), bevelEnabled: false, curveSegments: 24 });
+    geo.rotateX(-Math.PI / 2);
+    const tier = new THREE.Mesh(geo, [wood, stone]); // 윗면 나무 좌석, 옆면 석재
+    tier.position.set(a.center[0], ground - 0.05, -a.center[1]);
+    g.add(tier);
   }
+  const stage = new THREE.Mesh(new THREE.CylinderGeometry(inner, inner, 0.25, 40), new THREE.MeshStandardMaterial({ color: 0xd8d2c4, map: tiled('paving', 2), roughness: 0.85 }));
+  stage.position.set(a.center[0], ground + 0.1, -a.center[1]);
+  g.add(stage);
   return g;
 }
 

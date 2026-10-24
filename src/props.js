@@ -133,6 +133,20 @@ export function buildProps(scene, physics, terrain) {
   const waterY = terrain.heightAt(-5, -130) + 1.3;
   instanced(scene, new THREE.ConeGeometry(0.06, 1.3, 3), new THREE.MeshLambertMaterial({ color: 0x9c9a5c }), reeds, ([x, y, k], m) =>
     m.compose(new THREE.Vector3(x, waterY + 0.45, -y), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(x) * 0.2, 0, Math.cos(y) * 0.2)), new THREE.Vector3(1, 0.6 + (k % 3) * 0.15, 1)));
+
+  // 수련 잎과 분수 (웹 사진 010·184)
+  const [pb0, pb1, pb2, pb3] = pond.reduce(([a, b, c, d], [x, y]) => [Math.min(a, x), Math.min(b, y), Math.max(c, x), Math.max(d, y)], [Infinity, Infinity, -Infinity, -Infinity]);
+  const pads = [];
+  for (let i = 0; i < 900 && pads.length < 260; i++) {
+    const x = pb0 + (pb2 - pb0) * ((i * 0.618034) % 1), y = pb1 + (pb3 - pb1) * ((i * 0.381966 + 0.13) % 1);
+    const d = signedDist(x, y, pond);
+    if (d < -1.2 && (d > -9 || (i % 5) === 0)) pads.push([x, y, 0.45 + ((i * 37) % 10) / 16]); // 물가 쪽에 몰려 있다
+  }
+  instanced(scene, new THREE.CircleGeometry(1, 9).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ color: 0x4f7a3a, side: THREE.DoubleSide }), pads, ([x, y, s], m) =>
+    m.compose(new THREE.Vector3(x, waterY + 0.03, -y), new THREE.Quaternion(), new THREE.Vector3(s, 1, s)));
+  const [fx, fy] = pond.reduce(([sx, sy], [x, y]) => [sx + x / pond.length, sy + y / pond.length], [0, 0]);
+  const spray = new THREE.Mesh(new THREE.ConeGeometry(0.9, 3.2, 12, 1, true), new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide }));
+  spray.rotation.x = Math.PI; spray.position.set(fx, waterY + 1.6, -fy); scene.add(spray);
 }
 
 // ───────────── 도우미 ─────────────
