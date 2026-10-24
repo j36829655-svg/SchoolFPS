@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
 import { TERRAIN } from './data/terrain.js';
+import { PARTS } from './data/details.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildWorld, BUILDING_SPECS } from './world.js';
@@ -8,6 +9,10 @@ import { loadModels } from './models.js';
 import { loadTextures, tiled } from './textures.js';
 import { applyAlignment } from './align.js';
 import { loadOrtho, applyOrtho } from './ortho.js';
+import { signedDist } from './terrain.js';
+import { Game } from './game/game.js';
+import { Hud } from './game/hud.js';
+import { Net } from './game/net.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
 const SPAWN = { x: -76, y: -180, yaw: -0.4 }; // 정문 진입로, 북북동(학교 안쪽)을 바라봄
@@ -45,32 +50,33 @@ sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 3000);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 3000);
 camera.rotation.order = 'YXZ';
+scene.add(camera); // 1인칭 총 모델이 카메라에 붙어 있어 장면에 넣어야 보인다
 
-const startEl = document.getElementById('start');
-const startHtml = startEl.innerHTML;
+const $ = id => document.getElementById(id);
 await loadTextures();
 applyAlignment(); // 측정 좌표 → 브이월드 실제 좌표
 const physics = new Physics(CAMPUS.bounds);
 
 // 항공사진을 먼저 받는다: 지형 색과 나무 위치를 실제 사진에서 뽑기 위해 (최대 15초, 실패하면 기본 잔디·기존 나무)
 const T = TERRAIN, terrainBox = [T.x0, T.y0, T.x0 + (T.nx - 1) * T.step, T.y0 + (T.ny - 1) * T.step];
-startEl.innerHTML = '항공사진 불러오는 중…';
 const ortho = await Promise.race([
-  loadOrtho(terrainBox, (d, n) => { startEl.innerHTML = `항공사진 불러오는 중… ${d}/${n}`; }),
+  loadOrtho(terrainBox, (d, n) => { $('loading').textContent = `항공사진 불러오는 중… ${d}/${n}`; }),
   new Promise(res => setTimeout(() => res(null), 15000)),
 ]);
-startEl.innerHTML = startHtml;
 const orthoMsg = ortho ? '항공사진·건물: 브이월드(국토교통부) · 도로: OpenStreetMap' : '항공사진을 불러오지 못했어요 (기본 잔디 사용)';
+$('loading').textContent = '건물 모델 불러오는 중…';
 const models = await loadModels().catch(e => { console.warn('Blender 모델 없음', e); return null; });
 const terrain = buildWorld(scene, physics, ortho && { ...ortho, apply: mesh => applyOrtho(mesh, ortho, tiled('grass', 2.5)) }, models);
 // 건물·나무·소품은 그림자를 드리우고, 땅과 바닥은 그림자를 받는다
+const worldMeshes = [];
 scene.traverse(o => {
   if (!o.isMesh) return;
   o.receiveShadow = true;
   const flat = o.geometry.type === 'ShapeGeometry' || o.material.transparent;
   o.castShadow = !flat;
+  if (o.userData.solid) worldMeshes.push(o);
 });
 const groundAt = (x, y) => terrain.heightAt(x, y);
 
@@ -78,17 +84,73 @@ const body = new Body(physics, SPAWN.x, SPAWN.y, groundAt);
 physics.resolve(body.pos, body.radius);
 body.z = groundAt(body.pos.x, body.pos.y);
 let yaw = SPAWN.yaw, pitch = 0, flying = false, flyZ = 60;
+
+// ── 게임 ──
+const hud = new Hud();
+const solids = [...CAMPUS.buildings, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts).concat(CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts));
+const game = new Game({
+  scene, camera, physics, groundAt, solids, signedDist, worldMeshes, bounds: CAMPUS.bounds,
+  bodyPos: () => ({ x: body.pos.x, y: body.pos.y, z: body.z }),
+  yaw: () => yaw, pitch: () => pitch,
+  teleport: (x, y) => { body.pos.x = x; body.pos.y = y; physics.resolve(body.pos, body.radius); body.z = groundAt(body.pos.x, body.pos.y); body.vx = body.vy = body.vz = 0; },
+}, hud);
+
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain,
+window.game = { body, physics, camera, scene, terrain, play: game,
   // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
   exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
   set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
 
+// ── 메뉴 ──
+const startEl = $('start');
+$('loading').classList.add('hidden'); $('main').classList.remove('hidden');
+$('name').value = localStorage.getItem('cfps-name') || '';
+const playerName = () => { const n = $('name').value.trim() || '플레이어'; try { localStorage.setItem('cfps-name', n); } catch {} return n; };
+const status = t => { $('status').textContent = t; };
+let mode = null; // null(메뉴) | 'explore' | 'zombie' | 'pvp'
+
+function begin(m) {
+  mode = m; flying = false;
+  $('resume').classList.toggle('hidden', false); $('leave').classList.toggle('hidden', false);
+  setPlaying(true);
+}
+$('solo').onclick = () => { game.start({ mode: 'zombie', name: playerName() }); begin('zombie'); };
+$('explore').onclick = () => { game.stop(); begin('explore'); };
+$('resume').onclick = () => setPlaying(true);
+$('leave').onclick = () => { game.stop(); mode = null; $('resume').classList.add('hidden'); $('leave').classList.add('hidden'); status(''); };
+async function hostRoom(m) {
+  try {
+    status('방 만드는 중…');
+    const net = new Net(), code = await net.host();
+    game.start({ mode: m, net, name: playerName() });
+    status(`방 코드: ${code}\n친구에게 알려 주세요`);
+    begin(m);
+    hud.feed(`방 코드 ${code}`);
+  } catch (e) { status('방을 만들지 못했어요: ' + (e.message || e)); }
+}
+$('hostZombie').onclick = () => hostRoom('zombie');
+$('hostPvp').onclick = () => hostRoom('pvp');
+$('join').onclick = async () => {
+  const code = $('code').value.trim();
+  if (code.length !== 4) return status('4자리 방 코드를 입력하세요');
+  try {
+    status('연결 중…');
+    const net = new Net(); await net.join(code);
+    game.start({ mode: 'zombie', net, name: playerName() }); // 실제 모드는 방장이 보내는 상태로 바뀐다
+    status(`방 ${code.toUpperCase()}에 참가했어요`);
+    begin('client');
+  } catch (e) { status('참가하지 못했어요: ' + (e.message || e)); }
+};
+
 // ── 입력 ──
 const keys = new Set();
+let fireHeld = false, reloadPressed = false, restartPressed = false;
 addEventListener('keydown', e => {
+  if (document.activeElement?.tagName === 'INPUT') return;
   keys.add(e.code);
-  if (e.code === 'KeyF') {
+  if (e.code === 'Tab') e.preventDefault();
+  if (e.code === 'KeyR') { reloadPressed = true; restartPressed = true; }
+  if (e.code === 'KeyF' && mode === 'explore') {
     flying = !flying;
     if (flying) flyZ = body.z + EYE;
     else { body.z = Math.max(flyZ - EYE, groundAt(body.pos.x, body.pos.y)); body.vz = 0; body.onGround = false; } // 내리면 그 자리에서 떨어진다
@@ -101,20 +163,17 @@ let playing = false, dragging = false;
 function setPlaying(v) {
   playing = v;
   startEl.style.display = v ? 'none' : 'flex';
-  if (!v) keys.clear();
+  if (!v) { keys.clear(); fireHeld = false; }
+  else try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {}
 }
-startEl.addEventListener('click', () => {
-  setPlaying(true);
-  try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch {}
-});
 let hadLock = false;
 document.addEventListener('pointerlockchange', () => {
   if (document.pointerLockElement) hadLock = true;
-  else if (hadLock) { hadLock = false; setPlaying(false); } // Esc로 잠금이 풀리면 일시정지
+  else if (hadLock) { hadLock = false; setPlaying(false); } // Esc로 잠금이 풀리면 메뉴
 });
 addEventListener('keydown', e => { if (e.code === 'Escape' && playing && !document.pointerLockElement) setPlaying(false); });
-renderer.domElement.addEventListener('mousedown', () => { dragging = true; });
-addEventListener('mouseup', () => { dragging = false; });
+renderer.domElement.addEventListener('mousedown', e => { dragging = true; if (e.button === 0 && playing) fireHeld = true; });
+addEventListener('mouseup', e => { dragging = false; if (e.button === 0) fireHeld = false; });
 addEventListener('mousemove', e => {
   if (!playing || (!document.pointerLockElement && !dragging)) return;
   yaw -= e.movementX * 0.0022;
@@ -126,13 +185,14 @@ addEventListener('resize', () => {
 });
 
 // ── 루프 ──
-const hud = document.getElementById('hud');
+const devHud = $('hud');
 const clock = new THREE.Clock();
 let fpsT = 0, frames = 0, fps = 0;
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
-  const active = playing;
+  const inGame = game.active;
+  const active = playing && (!inGame || game.canMove());
 
   // 이동 입력 → 월드 방향 (x 동, y 북). yaw 0 = 북쪽
   let f = 0, s = 0;
@@ -156,9 +216,13 @@ function tick() {
     camera.position.set(body.pos.x, flyZ, -body.pos.y);
   } else {
     body.step(dt, wish, keys.has('ShiftLeft') ? RUN : WALK, active && keys.has('Space'));
-    camera.position.set(body.pos.x, body.z + EYE, -body.pos.y);
+    const down = inGame && !game.canMove() && !game.over ? 1.2 : 0; // 쓰러지면 시선이 낮아진다
+    camera.position.set(body.pos.x, body.z + EYE - down, -body.pos.y);
   }
   camera.rotation.set(pitch, yaw, 0);
+
+  game.update(dt, { trigger: playing && fireHeld, moving: !!(f || s), reload: reloadPressed, restart: restartPressed && playing, board: keys.has('Tab') });
+  reloadPressed = restartPressed = false;
 
   // 그림자 영역이 플레이어를 따라다니게
   sun.target.position.copy(camera.position);
@@ -168,7 +232,7 @@ function tick() {
 
   frames++; fpsT += dt;
   if (fpsT > 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
-  hud.textContent = `${fps} FPS  ${flying ? '비행 모드' : '걷기 모드'}\nx ${body.pos.x.toFixed(1)}  y ${body.pos.y.toFixed(1)}\n${orthoMsg}`;
+  devHud.textContent = inGame ? `${fps} FPS` : `${fps} FPS  ${flying ? '비행 모드' : '걷기 모드'}\nx ${body.pos.x.toFixed(1)}  y ${body.pos.y.toFixed(1)}\n${orthoMsg}`;
   requestAnimationFrame(tick);
 }
 tick();

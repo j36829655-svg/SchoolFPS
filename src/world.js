@@ -179,6 +179,13 @@ function road(pts, w, color, terrain) {
 // ───────────── 건물 ─────────────
 
 function building(b, ground) {
+  return markSolid(buildingInner(b, ground));
+}
+
+/** 총알이 맞는 면으로 표시 (main.js 가 모아서 레이캐스트에 쓴다) */
+function markSolid(g) { g.traverse(o => { if (o.isMesh) o.userData.solid = true; }); return g; }
+
+function buildingInner(b, ground) {
   const group = new THREE.Group();
   const style = b.style ?? STYLE_BY_ID[b.id] ?? (b.roofType === 'gable' ? 'cottage' : 'grid');
   const sloped = b.roofType !== 'flat';
@@ -191,6 +198,7 @@ function building(b, ground) {
     roofType: b.roofType, wall: b.wall, roof: b.roof, accent: b.accent, endGlass: !!b.endGlass, canopy: !!b.canopy, obb: o });
 
   // Blender 모델이 있으면 그것을 쓰고, 지붕 위 설비(태양광·난간)만 덧붙인다
+  group.userData.building = true;
   const model = MODELS?.get(b.id);
   if (model) {
     group.add(model);
