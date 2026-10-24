@@ -4,6 +4,10 @@ import { TREES } from './data/trees.js';
 import { Terrain } from './terrain.js';
 import { OVERRIDES, PARTS } from './data/details.js';
 import { buildProps } from './props.js';
+import { IMG, tiled } from './textures.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const UP = new THREE.Vector3(0, 1, 0);
 
 // 캠퍼스 데이터 → 3D 장면 + 충돌체. 데이터 좌표 (x 동, y 북) → 3D (x, 높이, -y)
 
@@ -49,7 +53,10 @@ export function buildWorld(scene, physics) {
       physics.addPolygon(g.pts);
     } else {
       const lines = g.type === 'futsal' || g.type === 'court' || g.name === '대운동장';
-      scene.add(decal(g.pts, y + 0.04, new THREE.MeshLambertMaterial({ color: GROUND_COLORS[g.type] ?? 0x888888, map: lines ? courtLines(g.type) : null }), lines));
+      const surface = { dirt: ['dirt', 5, 0xffffff], asphalt: ['asphalt', 4, 0xffffff], farm: ['dirt', 3, 0xa88a6a] }[g.type];
+      const mat = lines ? new THREE.MeshLambertMaterial({ color: GROUND_COLORS[g.type], map: courtLines(g.type) })
+        : new THREE.MeshLambertMaterial({ color: surface?.[2] ?? GROUND_COLORS[g.type], map: surface ? tiled(surface[0], surface[1]) : null });
+      scene.add(decal(g.pts, y + 0.04, mat, lines));
     }
   }
 
@@ -80,14 +87,16 @@ export function buildWorld(scene, physics) {
 
 function terrainMesh(t) {
   const { nx, ny } = t, n = nx * ny;
-  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), uv = new Float32Array(n * 2);
   const c = new THREE.Color();
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
     const k = j * nx + i, x = t.x0 + i * 2.5, y = t.y0 + j * 2.5, h = t.h[k];
     pos.set([x, h, -y], k * 3);
+    uv.set([x, y], k * 2);
+    // 잔디 텍스처에 곱할 색: 얼룩 + 경사가 급하면 흙빛
     const slope = Math.abs(t.heightAt(x + 2.5, y) - t.heightAt(x - 2.5, y)) + Math.abs(t.heightAt(x, y + 2.5) - t.heightAt(x, y - 2.5));
-    const noise = (Math.sin(x * 0.37 + y * 0.11) + Math.sin(x * 0.13 - y * 0.41)) * 0.03;
-    c.setRGB(0.40 + noise + slope * 0.02, 0.53 + noise - slope * 0.01, 0.30 + noise, THREE.SRGBColorSpace);
+    const noise = (Math.sin(x * 0.37 + y * 0.11) + Math.sin(x * 0.13 - y * 0.41)) * 0.06;
+    c.setRGB(0.92 + noise + slope * 0.03, 0.95 + noise - slope * 0.02, 0.82 + noise, THREE.SRGBColorSpace);
     col.set([c.r, c.g, c.b], k * 3);
   }
   const idx = [];
@@ -98,9 +107,10 @@ function terrainMesh(t) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: tiled('grass', 3) }));
 }
 
 function decal(pts, y, mat, obbUV = false) {
@@ -127,19 +137,24 @@ function road(pts, w, color, terrain) {
     for (let k = 0; k < n; k++) dense.push([ax + (bx - ax) * k / n, ay + (by - ay) * k / n]);
   }
   dense.push(pts[pts.length - 1]);
-  const pos = [], idx = [];
+  const pos = [], idx = [], uv = [];
+  let along = 0;
   dense.forEach(([x, y], i) => {
     const p = dense[Math.max(0, i - 1)], q = dense[Math.min(dense.length - 1, i + 1)];
     let dx = q[0] - p[0], dy = q[1] - p[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
     const nx = -dy * w / 2, ny = dx * w / 2;
+    if (i) along += Math.hypot(x - dense[i - 1][0], y - dense[i - 1][1]);
     for (const [px, py] of [[x + nx, y + ny], [x - nx, y - ny]]) pos.push(px, terrain.heightAt(px, py) + 0.1, -py);
+    uv.push(0, along, w, along);
     if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   });
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
+  const map = tiled(color === ROAD_COLORS.asphalt ? 'asphalt' : color === ROAD_COLORS.dirt ? 'dirt' : 'concrete', 4);
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: color === ROAD_COLORS.asphalt ? 0xd0d0d0 : 0xffffff, map, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }));
 }
 
 // ───────────── 건물 ─────────────
@@ -156,7 +171,7 @@ function building(b, ground) {
   const floorH = Math.max(2.6, (sloped ? eave : b.h - 0.6) / Math.max(1, b.floors));
   group.add(walls(b.pts, ground - 0.6, top, ground, facadeMaterial(style, b.wall, b.accent, BAY[style], floorH)));
 
-  const roofMat = new THREE.MeshLambertMaterial({ color: b.roof, side: THREE.DoubleSide });
+  const roofMat = new THREE.MeshStandardMaterial({ color: b.roof, map: tiled(sloped ? 'metalroof' : 'concrete', sloped ? 4 : 6), roughness: sloped ? 0.8 : 0.9, metalness: sloped ? 0.1 : 0, side: THREE.DoubleSide });
   if (!sloped) {
     group.add(decal(b.pts, top - 0.6, roofMat)); // 0.6m 파라펫 안쪽 평지붕
   } else {
@@ -259,7 +274,7 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
       g.fillStyle = '#c9d6e2'; g.fillRect(0, 0, 4, 104); g.fillRect(0, 50, 128, 3);
       break;
     case 'remnant': // 흰 벽 + 적갈색 프레임 + 파란 유리 (렘넌트)
-      g.fillStyle = '#2f3a44'; g.fillRect(70, 30, 40, 50);
+      win(g, 70, 30, 40, 50);
       break;
     case 'cottage': // 흰 사이딩 + 창문 (도서관 등 단층)
       g.strokeStyle = 'rgba(0,0,0,0.08)'; for (let y = 4; y < 128; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); }
@@ -275,7 +290,7 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
     case 'brick': // 회색 벽돌 (어린이집)
       g.strokeStyle = 'rgba(0,0,0,0.18)';
       for (let y = 0; y < 128; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); for (let x = (y / 8) % 2 * 8; x < 128; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } }
-      g.fillStyle = '#ffffff'; g.fillRect(36, 30, 56, 50); g.fillStyle = glass; g.fillRect(40, 34, 48, 42);
+      win(g, 38, 32, 52, 46);
       break;
     case 'rustframe': // 렘넌트 입구의 적갈색 프레임 + 유리
       g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
@@ -302,15 +317,26 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
       g.strokeStyle = 'rgba(0,0,0,0.12)'; for (let x = 0; x < 128; x += 16) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 128); g.stroke(); }
       break;
     default: // grid: 일반 창
-      g.fillStyle = glass; g.fillRect(34, 28, 60, 56);
-      g.fillStyle = '#e8ecef'; g.fillRect(62, 28, 3, 56);
+      win(g, 34, 28, 60, 56);
   }
-  const tex = new THREE.CanvasTexture(c);
+  // 실사 질감(회벽·콘크리트)을 곱하고, 층마다 슬래브 그림자 선
+  g.globalCompositeOperation = 'multiply';
+  g.drawImage(IMG[['dorm', 'concrete', 'shed', 'brick'].includes(style) ? 'concrete' : 'plaster'], 0, 0, 128, 128);
+  g.globalCompositeOperation = 'source-over';
+  g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(0, 124, 128, 4);
+  // 유리 픽셀은 위쪽을 하늘빛으로 밝히고, 반사(매끈·금속성)가 되도록 roughness/metalness 맵을 만든다
+  const d = g.getImageData(0, 0, 128, 128), oc = document.createElement('canvas'); oc.width = oc.height = 128;
+  const og = oc.getContext('2d'), o = og.createImageData(128, 128);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const r = d.data[i], gg = d.data[i + 1], b = d.data[i + 2], isGlass = b > r + 18 && b >= gg - 5 && r + gg + b < 480;
+    if (isGlass) { const k = (1 - (i >> 9) / 128) * 40; d.data[i] += k; d.data[i + 1] += k; d.data[i + 2] += k * 1.2; }
+    o.data[i] = 255; o.data[i + 1] = isGlass ? 25 : 225; o.data[i + 2] = isGlass ? 170 : 0; o.data[i + 3] = 255;
+  }
+  g.putImageData(d, 0, 0); og.putImageData(o, 0, 0);
+  const prep = t => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(1 / bay, 1 / floorH); t.anisotropy = 4; return t; };
+  const tex = prep(new THREE.CanvasTexture(c)), orm = prep(new THREE.CanvasTexture(oc));
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1 / bay, 1 / floorH);
-  tex.anisotropy = 4;
-  const mat = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide });
+  const mat = new THREE.MeshStandardMaterial({ map: tex, roughnessMap: orm, metalnessMap: orm, side: THREE.DoubleSide });
   texCache.set(key, mat);
   return mat;
 }
@@ -334,9 +360,12 @@ function courtLines(type) {
 // ───────────── 나무 ─────────────
 
 function addTrees(scene, physics, terrain) {
+  // 침엽수: 원뿔 3단, 활엽수: 덩어리 4개를 합친 수관
+  const layer = (r, h, y) => new THREE.ConeGeometry(r, h, 8).translate(0, y, 0);
+  const blob = (r, x, y, z) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z);
   const kinds = [
-    { crown: new THREE.ConeGeometry(2.2, 7, 7), color: 0x2f5a35, crownY: 6.5, list: [] },
-    { crown: new THREE.IcosahedronGeometry(3, 0), color: 0x4f7d3a, crownY: 5.5, list: [] },
+    { crown: mergeGeometries([layer(2.4, 3.6, -1.6), layer(1.9, 3.2, 0.4), layer(1.2, 2.8, 2.2)]), color: 0x2f5a35, crownY: 6.5, list: [] },
+    { crown: mergeGeometries([blob(2.2, 0, 0, 0), blob(1.7, 1.4, 0.6, 0.4), blob(1.6, -1.2, 0.8, -0.6), blob(1.4, 0.2, 1.7, 0.9)]), color: 0x4f7d3a, crownY: 5.2, list: [] },
   ];
   for (const t of TREES) kinds[t[2]].list.push(t);
 
@@ -344,10 +373,14 @@ function addTrees(scene, physics, terrain) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   let ti = 0;
   for (const k of kinds) {
-    const crowns = new THREE.InstancedMesh(k.crown, new THREE.MeshLambertMaterial({ color: k.color, flatShading: true }), k.list.length);
+    const crowns = new THREE.InstancedMesh(k.crown, new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), k.list.length);
+    const base = new THREE.Color(k.color), tint = new THREE.Color();
     k.list.forEach(([x, y, , sc], i) => {
       const h = terrain.heightAt(x, y);
-      crowns.setMatrixAt(i, m.compose(p.set(x, h + k.crownY * sc, -y), q, s.set(sc, sc, sc)));
+      q.setFromAxisAngle(UP, (x * 7.3 + y * 3.1) % 6.28);
+      crowns.setMatrixAt(i, m.compose(p.set(x, h + k.crownY * sc, -y), q, s.set(sc, sc * (0.9 + (i % 5) * 0.06), sc)));
+      crowns.setColorAt(i, tint.copy(base).offsetHSL(((i * 37) % 11 - 5) * 0.006, 0, ((i * 13) % 9 - 4) * 0.018));
+      q.identity();
       trunks.setMatrixAt(ti++, m.compose(p.set(x, h + 2 * sc, -y), q, s.set(sc, sc, sc)));
       physics.addCircle(x, y, 0.35 * sc);
     });
@@ -361,6 +394,8 @@ function addTrees(scene, physics, terrain) {
 function mesh(arr, mat) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  const uv = []; for (let i = 0; i < arr.length; i += 3) uv.push(arr[i], arr[i + 2]); // 위에서 내려다본 평면 투영 (m)
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.computeVertexNormals();
   return new THREE.Mesh(geo, mat);
 }
@@ -393,4 +428,16 @@ function obb(pts) {
   let L = u1 - u0, W = v1 - v0;
   if (W > L) { [L, W] = [W, L]; [ux, uy] = [-uy, ux]; }
   return { cx, cy, ux, uy, L, W };
+}
+
+/** 창: 밝은 창틀 + 유리(위가 밝은 하늘 반사) + 가운데 창살 + 아래 창턱 그림자 */
+function win(g, x, y, w, h) {
+  g.fillStyle = '#e4e6e8'; g.fillRect(x - 3, y - 3, w + 6, h + 6);
+  const grd = g.createLinearGradient(0, y, 0, y + h);
+  grd.addColorStop(0, '#4f6f8f'); grd.addColorStop(1, '#2a3d52');
+  g.fillStyle = grd; g.fillRect(x, y, w, h);
+  g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(x, y, w, 3);
+  g.fillStyle = '#e4e6e8'; g.fillRect(x + w / 2 - 1.5, y, 3, h);
+  g.fillStyle = '#f4f4f2'; g.fillRect(x - 5, y + h + 3, w + 10, 3);
+  g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x - 5, y + h + 6, w + 10, 3);
 }

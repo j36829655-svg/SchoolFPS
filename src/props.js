@@ -81,7 +81,7 @@ export function buildProps(scene, physics, terrain) {
       azaleas.push([ax + ux * t - uy * side * 4.8, ay + uy * t + ux * side * 4.8]);
     }
   });
-  instanced(scene, new THREE.IcosahedronGeometry(0.6, 0), new THREE.MeshLambertMaterial({ color: 0xe0559e, flatShading: true }), azaleas, ([x, y], m, i) =>
+  instanced(scene, new THREE.IcosahedronGeometry(0.55, 1), new THREE.MeshLambertMaterial({ color: 0xd9559a }), azaleas, ([x, y], m, i) =>
     m.compose(new THREE.Vector3(x, hAt(x, y) + 0.45, -y), new THREE.Quaternion(), new THREE.Vector3(1.2, 0.7 + (i % 3) * 0.1, 1)));
 
   // 전봇대 + 전선, 가로등 — 교내 도로를 따라

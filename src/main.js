@@ -1,29 +1,59 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
 import { Physics, Body } from './physics.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 import { buildWorld } from './world.js';
+import { loadTextures } from './textures.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
 const SPAWN = { x: -40, y: -150, yaw: 0.6 }; // 주차장 근처, 북동쪽(학교 중심)을 바라봄
+const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(200)); // 고도 42°, 남남서
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.9;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x9cc4e4);
-scene.fog = new THREE.Fog(0x9cc4e4, 120, 520);
-scene.add(new THREE.HemisphereLight(0xeef6ff, 0x6b7b55, 2.3));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(-120, 200, 80);
-scene.add(sun);
+scene.fog = new THREE.Fog(0xc9dbe8, 150, 650);
 
-const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 1500);
+// 하늘: 물리 기반 대기 산란 → 배경 + 유리·금속에 비치는 환경맵
+const sky = new Sky();
+sky.scale.setScalar(2500);
+sky.material.uniforms.turbidity.value = 6;
+sky.material.uniforms.rayleigh.value = 1.6;
+sky.material.uniforms.sunPosition.value.copy(SUN_DIR);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const skyScene = new THREE.Scene(); skyScene.add(sky);
+scene.environment = pmrem.fromScene(skyScene).texture;
+scene.add(sky);
+
+scene.add(new THREE.HemisphereLight(0xdfeeff, 0x6b7b55, 1.2));
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.04;
+scene.add(sun, sun.target);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 3000);
 camera.rotation.order = 'YXZ';
 
+await loadTextures();
 const physics = new Physics(CAMPUS.bounds);
 const terrain = buildWorld(scene, physics);
+// 건물·나무·소품은 그림자를 드리우고, 땅과 바닥은 그림자를 받는다
+scene.traverse(o => {
+  if (!o.isMesh) return;
+  o.receiveShadow = true;
+  const flat = o.geometry.type === 'ShapeGeometry' || o.material.transparent;
+  o.castShadow = !flat;
+});
 const groundAt = (x, y) => terrain.heightAt(x, y);
 
 const body = new Body(physics, SPAWN.x, SPAWN.y, groundAt);
@@ -101,6 +131,10 @@ function tick() {
     camera.position.set(body.pos.x, body.z + EYE, -body.pos.y);
   }
   camera.rotation.set(pitch, yaw, 0);
+
+  // 그림자 영역이 플레이어를 따라다니게
+  sun.target.position.copy(camera.position);
+  sun.position.copy(camera.position).addScaledVector(SUN_DIR, 200);
 
   renderer.render(scene, camera);
 
