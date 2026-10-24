@@ -3,7 +3,8 @@
 실제 캠퍼스 배치를 위성사진과 로드뷰로 측정해 만든 웹 3D FPS. 빌드 없이 브라우저에서 바로 실행된다.
 
 - 플레이: https://j36829655-svg.github.io/SchoolFPS/
-- 조작: WASD 이동 · Shift 달리기 · Space 점프 · F 비행 모드(맵 둘러보기) · Esc 일시정지
+- 조작: WASD 이동 · Shift 달리기 · Space 점프 · Esc 일시정지
+- 개발용 비행(F): 바라보는 방향으로 날기 · Space/E 위 · C/Q 아래 · Shift 빠르게
 
 ## 구조
 
@@ -25,5 +26,7 @@
 ## 데이터 출처
 
 - 항공사진·건물 외곽선·층수: [브이월드](https://www.vworld.kr) (국토교통부, 공공데이터) — 항공사진은 실행 중 브이월드 API에서 받아온다
+- 도로: © OpenStreetMap contributors (ODbL)
+- 나무 위치: 브이월드 항공사진에서 실행 중 자동 추출
 - 고도: AWS Terrain Tiles (SRTM)
 - 텍스처: ambientCG (CC0)
