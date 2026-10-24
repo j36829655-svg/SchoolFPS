@@ -12,7 +12,7 @@ export const OVERRIDES = {
   taecho: { style: 'ribbon', h: 11, floors: 2, roof: '#4d5560', endGlass: true }, // 흰 2층 띠창 + 낮은 짙은 금속 아치 지붕, 끝면은 청록 유리 (로드뷰 02·03)
   main_east: { solar: true, style: 'metalband', wall: '#8e959b' },  // 회색 골강판 + 위층 유리 띠 + 색 세로창 (웹 사진 020)
   main_west: { solar: true },                                        // 항공사진에 보이는 지붕 태양광 패널
-  house_b: { style: 'church', h: 14, floors: 4, wall: '#d4d0c6', canopy: true }, // 교회 탑: 석재 벽, 큰 루버 패널, 유리 맨 위층, 캔틸레버 지붕 (웹 사진 004)
+  house_b: { style: 'grid', wall: '#e6e6e2' },                       // 일반 2층 건물 (교회 탑은 남자기숙사 끝에 붙어 있음)
   remnant: { h: 8.5, floors: 2, railing: true },                     // 2층 + 3층 높이 유리 탑(아래 parts) + 옥상 난간 (로드뷰 09)
   girls_dorm: { style: 'grid', h: 17, floors: 5, wall: '#eeeeec' },  // 흰 5층 (드론 사진 131·176·184)
   // 사랑·소망·믿음동: 4층 평지붕, 긴 면은 갈색 나무 판, 도로 쪽 끝면은 콘크리트 격자 (로드뷰 15, 17, 22)
@@ -27,6 +27,8 @@ export const PARTS = [
   { parent: 'remnant', pts: rect(-1, -39, 9, 8, -71.6), h: 11.5, floors: 3, roofType: 'flat', style: 'tower', wall: '#4f86c6', accent: '#9a4a2c', roof: '#d9dcdf' },
   { parent: 'remnant', pts: rect(0.6, -49.6, 6, 1.6, 45), h: 7.5, floors: 1, roofType: 'flat', style: 'rustframe', wall: '#9a4a2c', accent: '#9a4a2c', roof: '#9a4a2c' },
   { parent: 'taecho', pts: rect(-83.6, -138.6, 3.8, 3.8, 50.3), h: 9.5, floors: 2, roofType: 'flat', style: 'curtain', wall: '#d8dde2', accent: '#3f6f7f', roof: '#d9dcdf' }, // 남쪽 모서리 유리 계단실 (로드뷰 02)
+  // 남자기숙사 남쪽 끝의 교회 탑: 석재 벽, 큰 가로 루버 패널, 유리 맨 위층, 캔틸레버 지붕 (웹 사진 004, 사용자 확인)
+  { parent: 'main_east', pts: rect(-92.41, -74.05, 13.8, 10.2, 31.3), h: 16, floors: 4, roofType: 'flat', style: 'church', wall: '#d4d0c6', accent: '#6b7a8a', roof: '#c9cccf', canopy: true },
   { parent: 'library', pts: rect(35.5, -4, 6, 6, -53), h: 5.8, floors: 1, roofType: 'gable', style: 'cottage', wall: '#f3f1ea', accent: '#6b7a8a', roof: '#4b5057' },
   { parent: 'sarang', pts: rect(119.4, 110, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
   { parent: 'somang', pts: rect(117.4, 84.5, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
