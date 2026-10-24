@@ -21,7 +21,7 @@ const STYLE_BY_ID = {
   kinder: 'brick', sarang: 'dorm', somang: 'dorm', mideum: 'dorm',
   small_mid: 'shed', blue_shed: 'shed', main_sw: 'shed', shed_n: 'shed',
 };
-const BAY = { ribbon: 2, grid: 3, glass: 1.5, remnant: 4, cottage: 4, dorm: 3.5, brick: 3, shed: 3, curtain: 1.5, louver: 1.2, tower: 1.5, concrete: 3.5, rustframe: 6 };
+const BAY = { ribbon: 2, grid: 3, glass: 1.5, remnant: 4, cottage: 4, dorm: 3.5, brick: 3, shed: 3, curtain: 1.5, louver: 1.2, tower: 1.5, concrete: 3.5, rustframe: 6, dormSide: 3, dormEnd: 3.4 };
 const PITCH = { gable: 0.3, hip: 0.15, arch: 0.35 };
 
 const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
@@ -169,34 +169,44 @@ function building(b, ground) {
   const top = ground + (sloped ? eave : b.h);
 
   const floorH = Math.max(2.6, (sloped ? eave : b.h - 0.6) / Math.max(1, b.floors));
-  group.add(walls(b.pts, ground - 0.6, top, ground, facadeMaterial(style, b.wall, b.accent, BAY[style], floorH)));
+  const sideMat = facadeMaterial(style, b.wall, b.accent, BAY[style], floorH);
+  // 짧은 면(마구리)이 다른 건물: 기숙사처럼 끝면만 콘크리트 격자인 경우
+  const endMat = b.endStyle ? facadeMaterial(b.endStyle, b.wall, b.accent, BAY[b.endStyle], floorH) : sideMat;
+  group.add(walls(b.pts, ground - 0.6, top, ground, sideMat, endMat, o.L * 0.7));
 
   const roofMat = new THREE.MeshStandardMaterial({ color: b.roof, map: tiled(sloped ? 'metalroof' : 'concrete', sloped ? 4 : 6), roughness: sloped ? 0.8 : 0.9, metalness: sloped ? 0.1 : 0, side: THREE.DoubleSide });
   if (!sloped) {
     group.add(decal(b.pts, top - 0.6, roofMat)); // 0.6m 파라펫 안쪽 평지붕
   } else {
-    const endMat = b.endGlass ? new THREE.MeshLambertMaterial({ color: 0x6fa8a8, transparent: true, opacity: 0.6, side: THREE.DoubleSide }) : new THREE.MeshLambertMaterial({ color: b.wall, side: THREE.DoubleSide });
-    group.add(slopedRoof(o, ground + eave, rise, b.roofType, roofMat, endMat));
+    // 박공 삼각면: 유리(태초관) / 지붕색(도서관 같은 단층집, 로드뷰에서 짙은 회색) / 벽색
+    const gableMat = b.endGlass ? new THREE.MeshLambertMaterial({ color: 0x6fa8a8, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
+      : new THREE.MeshLambertMaterial({ color: style === 'cottage' ? b.roof : b.wall, side: THREE.DoubleSide });
+    group.add(slopedRoof(o, ground + eave, rise, b.roofType, roofMat, gableMat));
   }
   return group;
 }
 
-function walls(pts, z0, z1, vBase, mat) {
-  const p = ccw(pts), pos = [], uv = [];
+/** 외벽. endLen 보다 짧은 면은 endMat(그룹 1)을 쓴다 */
+function walls(pts, z0, z1, vBase, mat, endMat = mat, endLen = 0) {
+  const p = ccw(pts), pos = [], uv = [], ends = [];
   let u = 0;
   for (let i = 0; i < p.length; i++) {
     const [ax, ay] = p[i], [bx, by] = p[(i + 1) % p.length], len = Math.hypot(bx - ax, by - ay);
     const A0 = [ax, z0, -ay], B0 = [bx, z0, -by], B1 = [bx, z1, -by], A1 = [ax, z1, -ay];
-    pos.push(...A0, ...B0, ...B1, ...A0, ...B1, ...A1);
     const v0 = z0 - vBase, v1 = z1 - vBase;
-    uv.push(u, v0, u + len, v0, u + len, v1, u, v0, u + len, v1, u, v1);
+    const quad = [...A0, ...B0, ...B1, ...A0, ...B1, ...A1], quv = [u, v0, u + len, v0, u + len, v1, u, v0, u + len, v1, u, v1];
+    if (len < endLen) { ends.push(quad, quv); } else { pos.push(...quad); uv.push(...quv); }
     u += len;
   }
+  const nSide = pos.length / 3;
+  for (let i = 0; i < ends.length; i += 2) { pos.push(...ends[i]); uv.push(...ends[i + 1]); }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  geo.addGroup(0, nSide, 0);
+  geo.addGroup(nSide, pos.length / 3 - nSide, 1);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, mat);
+  return new THREE.Mesh(geo, [mat, endMat]);
 }
 
 /** 박공(gable) · 모임(hip) · 아치(arch) 지붕 — 건물을 감싸는 회전 사각형 기준 */
@@ -296,6 +306,18 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
       g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
       g.fillStyle = '#4f86c6'; g.fillRect(24, 16, 80, 96);
       break;
+    case 'dormSide': // 기숙사 긴 면: 갈색 나무 판 + 작은 창 + 콘크리트 슬래브 (로드뷰 22)
+      g.drawImage(IMG.woodpanel, 0, 0, 128, 128);
+      g.fillStyle = 'rgba(150,85,45,0.22)'; g.fillRect(0, 0, 128, 128);
+      g.fillStyle = '#a9a9a3'; g.fillRect(0, 112, 128, 16);
+      win(g, 46, 36, 36, 40);
+      break;
+    case 'dormEnd': // 기숙사 끝면: 노출 콘크리트 격자 + 큰 창 + 창 아래 나무 판
+      g.fillStyle = '#2e3a42'; g.fillRect(12, 14, 104, 58);
+      g.fillStyle = '#9aa7b0'; g.fillRect(62, 14, 3, 58);
+      g.drawImage(IMG.woodpanel, 0, 0, 128, 40, 12, 76, 104, 30);
+      g.fillStyle = '#b9b9b4'; g.fillRect(0, 110, 128, 18);
+      break;
     case 'curtain': // 유리 벽
       g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
       g.fillStyle = '#c3d3db'; g.fillRect(0, 0, 5, 128); g.fillRect(0, 0, 128, 5);
@@ -321,7 +343,7 @@ function facadeMaterial(style, wall, accent, bay, floorH) {
   }
   // 실사 질감(회벽·콘크리트)을 곱하고, 층마다 슬래브 그림자 선
   g.globalCompositeOperation = 'multiply';
-  g.drawImage(IMG[['dorm', 'concrete', 'shed', 'brick'].includes(style) ? 'concrete' : 'plaster'], 0, 0, 128, 128);
+  if (style !== 'dormSide') g.drawImage(IMG[['dorm', 'concrete', 'shed', 'brick', 'dormEnd', 'dormSide'].includes(style) ? 'concrete' : 'plaster'], 0, 0, 128, 128);
   g.globalCompositeOperation = 'source-over';
   g.fillStyle = 'rgba(0,0,0,0.22)'; g.fillRect(0, 124, 128, 4);
   // 유리 픽셀은 위쪽을 하늘빛으로 밝히고, 반사(매끈·금속성)가 되도록 roughness/metalness 맵을 만든다

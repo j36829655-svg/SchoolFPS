@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
-import { PROPS, HEDGES, GUARDRAILS, AZALEA_ROADS, CARS, PAVINGS, SIDEWALKS } from './data/details.js';
+import { PROPS, HEDGES, GUARDRAILS, AZALEA_ROADS, CARS, PAVINGS, SIDEWALKS, SHRUB_BALLS, STREET, BRICK_WALLS, PARTS } from './data/details.js';
 import { signedDist } from './terrain.js';
 
 // 로드뷰에서 본 소품·조경. 모든 소품은 지형 높이에 놓이고, 부딪힐 만한 것은 충돌체를 가진다.
@@ -115,6 +115,8 @@ export function buildProps(scene, physics, terrain) {
     physics.addPolygon(rectAt(x, y, 4.4, 1.8, deg));
   });
 
+  roadside(scene, physics, terrain);
+
   // 연못 갈대: 물가를 따라 군데군데
   const pond = CAMPUS.grounds.find(g => g.name === '연못').pts;
   const reeds = [];
@@ -204,4 +206,56 @@ function paving({ kind, pts }, terrain) {
   for (let i = 0; i < p.count; i++) p.setY(i, terrain.heightAt(p.getX(i), -p.getZ(i)) + 0.12);
   geo.computeVertexNormals();
   return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -3 }));
+}
+
+/** 길가: 경계석, 가로수, 다듬은 관목, 벽돌 담 (로드뷰 01·02·11·12·17·21) */
+function roadside(scene, physics, terrain) {
+  const hAt = (x, y) => terrain.heightAt(x, y);
+  const road = CAMPUS.roads.find(r => r.name === STREET.road);
+  const blockers = [...CAMPUS.buildings.map(b => b.pts), ...PARTS.map(p => p.pts), ...CAMPUS.grounds.map(g => g.pts)];
+  const clear = (x, y, m) => blockers.every(p => signedDist(x, y, p) > m);
+
+  // 경계석: 도로 양쪽 가장자리를 따라 15cm 높이 회색 돌
+  const curbMat = new THREE.MeshLambertMaterial({ color: 0xb3b1aa });
+  const curbs = [];
+  segments(road.pts, (ax, ay, bx, by, len, ang) => {
+    const ux = (bx - ax) / len, uy = (by - ay) / len;
+    for (let t = 0; t < len; t += 1) for (const side of [-1, 1]) {
+      const x = ax + ux * (t + 0.5) - uy * side * (road.w / 2 + 0.1), y = ay + uy * (t + 0.5) + ux * side * (road.w / 2 + 0.1);
+      curbs.push([x, y, ang]);
+    }
+  });
+  instanced(scene, new THREE.BoxGeometry(1, 0.18, 0.18), curbMat, curbs, ([x, y, ang], m) =>
+    m.compose(new THREE.Vector3(x, hAt(x, y) + 0.09, -y), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang), new THREE.Vector3(1, 1, 1)));
+
+  // 가로수: 은행나무처럼 위로 길쭉한 수관
+  const trees = alongPolyline(road.pts, STREET.treeEvery, road.w / 2 + 2.2, 4).concat(alongPolyline(road.pts, STREET.treeEvery, -(road.w / 2 + 2.2), 8))
+    .filter(([x, y]) => clear(x, y, 2.5));
+  const crown = new THREE.IcosahedronGeometry(1, 1).scale(1.8, 3.2, 1.8);
+  instanced(scene, crown, new THREE.MeshLambertMaterial({ color: 0x8fb04f }), trees, ([x, y], m, i) =>
+    m.compose(new THREE.Vector3(x, hAt(x, y) + 5.2, -y), new THREE.Quaternion(), new THREE.Vector3(1, 0.9 + (i % 4) * 0.08, 1)));
+  instanced(scene, new THREE.CylinderGeometry(0.14, 0.2, 4, 6), MAT.darkWood, trees, ([x, y], m) =>
+    m.compose(new THREE.Vector3(x, hAt(x, y) + 2, -y), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)));
+  for (const [x, y] of trees) physics.addCircle(x, y, 0.25);
+
+  // 둥글게 다듬은 관목
+  instanced(scene, new THREE.IcosahedronGeometry(1, 2), new THREE.MeshLambertMaterial({ color: 0x3f6b35 }), SHRUB_BALLS, ([x, y, s], m) =>
+    m.compose(new THREE.Vector3(x, hAt(x, y) + s * 0.55, -y), new THREE.Quaternion(), new THREE.Vector3(s, s * 0.7, s)));
+  for (const [x, y, s] of SHRUB_BALLS) physics.addCircle(x, y, s * 0.9);
+
+  // 붉은 벽돌 담
+  const brickMat = new THREE.MeshLambertMaterial({ color: 0x9a4a36, map: brickTexture() });
+  for (const line of BRICK_WALLS) segments(line, (ax, ay, bx, by, len, ang) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(len, 0.9, 0.3), brickMat);
+    m.position.set((ax + bx) / 2, hAt((ax + bx) / 2, (ay + by) / 2) + 0.45, -(ay + by) / 2); m.rotation.y = ang; scene.add(m);
+    physics.addPolygon(thick(ax, ay, bx, by, 0.15));
+  });
+}
+
+function brickTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64); g.strokeStyle = '#c9c4bd'; g.lineWidth = 2;
+  for (let y = 0; y < 64; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(64, y); g.stroke(); for (let x = (y / 8) % 2 * 8; x < 64; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 1); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }

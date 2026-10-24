@@ -13,6 +13,11 @@ export const OVERRIDES = {
   house_b: { style: 'louver', wall: '#cfd2d4' },                     // 세로 루버가 있는 회색 2층
   remnant: { h: 8.5, floors: 2 },                                    // 2층 + 3층 높이 유리 탑(아래 parts)
   girls_dorm: { style: 'grid', wall: '#e6dcc6' },                    // 베이지 벽 + 유리 구역(parts)
+  // 사랑·소망·믿음동: 4층 평지붕, 긴 면은 갈색 나무 판, 도로 쪽 끝면은 콘크리트 격자 (로드뷰 15, 17, 22)
+  sarang: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
+  somang: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
+  mideum: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
+  library: { h: 5.2 },
 };
 
 // 건물에 붙는 부속 덩어리. parent 건물의 터 높이에서 시작한다
@@ -66,3 +71,10 @@ export const CARS = [
   ...[-62, -58, -54, -50, -46, -42, -38, -34, -30, -26, -22].flatMap((x, i) => [[x, -141, 90], ...(i % 3 ? [[x, -152, 270]] : []), ...(i % 2 ? [[x, -160, 90]] : [])]),
   [129, 62, 90], [129, 68, 90], [130, 80, 90], [131, 92, 90], [152, 150, 0], [156, 146, 10], [10, -40, 52],
 ];
+
+// 둥글게 다듬은 관목 (로드뷰 11, 21)
+export const SHRUB_BALLS = [[33, -12, 2.2], [26, -14, 1.2], [20, -12, 1.1], [48, -20, 1.0], [52, -16, 0.9], [-36, -98, 1.0], [-48, -112, 1.1], [0, -64, 1.0], [6, -60, 0.9]];
+// 교내 도로 가로수 간격(m)과 경계석 (로드뷰 12, 17)
+export const STREET = { road: '교내 도로', treeEvery: 9, curb: true };
+// 입구 길 서쪽 붉은 벽돌 담 (로드뷰 01, 02)
+export const BRICK_WALLS = [[[-82, -186], [-79, -170], [-73, -152]]];
