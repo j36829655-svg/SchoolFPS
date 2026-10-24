@@ -45,12 +45,19 @@ const BUILDERS = {
 
 function grp(...children) { const g = new THREE.Group(); children.forEach(c => g.add(c)); return g; }
 
+let clashes = () => false; // buildProps 안에서 실제 도로·건물로 채운다
+
 export function buildProps(scene, physics, terrain) {
   const hAt = (x, y) => terrain.heightAt(x, y);
   const place = (obj, x, y, deg = 0) => { obj.position.set(x, hAt(x, y), -y); obj.rotation.y = deg * Math.PI / 180; scene.add(obj); return obj; };
 
+  // 손으로 찍은 소품 좌표가 실제 도로·건물·연못 위에 오면 놓지 않는다 (도로 중앙 벽돌담·관목 같은 오류 방지)
+  const roadSegs = CAMPUS.roads.flatMap(r => r.pts.slice(1).map((p, i) => [...r.pts[i], ...p, r.w / 2]));
+  const solids = [...CAMPUS.buildings, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts).concat(CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts));
+  clashes = (x, y, m) => roadSegs.some(([ax, ay, bx, by, hw]) => segDist(x, y, ax, ay, bx, by) < hw + m) || solids.some(p => signedDist(x, y, p) < m);
   const solid = { rock: 1.4, booth: 0.6, pine: 0.35, metaseq: 0.45, signpost: 0.15, stoneSign: 0.6 };
   for (const [kind, x, y, deg] of PROPS) {
+    if (!['steps', 'stoneSign', 'deck'].includes(kind) && clashes(x, y, 0.8)) continue;
     place(BUILDERS[kind](), x, y, deg);
     if (solid[kind]) physics.addCircle(x, y, solid[kind]);
   }
@@ -59,7 +66,8 @@ export function buildProps(scene, physics, terrain) {
   for (const s of SIDEWALKS) scene.add(strip(s.pts, s.w, new THREE.MeshLambertMaterial({ color: s.color, polygonOffset: true, polygonOffsetFactor: -4 }), terrain, 0.14));
 
   // 산울타리
-  for (const line of HEDGES) segments(line, (ax, ay, bx, by, len, ang) => {
+  for (const line of HEDGES) segments(densify(line, 2), (ax, ay, bx, by, len, ang) => {
+    if (clashes((ax + bx) / 2, (ay + by) / 2, 0.6)) return;
     const m = box(len, 0.95, 0.9, MAT.hedge); m.position.set((ax + bx) / 2, hAt((ax + bx) / 2, (ay + by) / 2) + 0.45, -(ay + by) / 2); m.rotation.y = ang; scene.add(m);
     physics.addPolygon(thick(ax, ay, bx, by, 0.45));
   });
@@ -108,6 +116,7 @@ export function buildProps(scene, physics, terrain) {
   // 주차된 차
   const colors = [0xf2f2f2, 0xf2f2f2, 0x2a2d31, 0x9ea3a8, 0x2a2d31, 0x6b7076, 0xe9e9e9, 0x3b4a66];
   CARS.forEach(([x, y, deg], i) => {
+    if (clashes(x, y, 1)) return;
     const mat = M(colors[i % colors.length]);
     const car = grp(box(4.4, 0.75, 1.8, mat, 0, 0.6, 0), box(2.4, 0.6, 1.6, mat, -0.2, 1.25, 0), box(2.3, 0.45, 1.62, new THREE.MeshLambertMaterial({ color: 0x1d2630 }), -0.2, 1.27, 0));
     for (const [wx, wz] of [[1.4, 0.85], [-1.4, 0.85], [1.4, -0.85], [-1.4, -0.85]]) { const w = cyl(0.33, 0.33, 0.25, M(0x111111), wx, 0.33, wz, 10); w.rotation.x = Math.PI / 2; car.add(w); }
@@ -253,13 +262,14 @@ function roadside(scene, physics, terrain) {
   for (const [x, y] of trees) physics.addCircle(x, y, 0.25);
 
   // 둥글게 다듬은 관목
-  instanced(scene, new THREE.IcosahedronGeometry(1, 2), new THREE.MeshLambertMaterial({ color: 0x3f6b35 }), SHRUB_BALLS, ([x, y, s], m) =>
+  instanced(scene, new THREE.IcosahedronGeometry(1, 2), new THREE.MeshLambertMaterial({ color: 0x3f6b35 }), SHRUB_BALLS.filter(([x, y, s]) => !clashes(x, y, s + 0.3)), ([x, y, s], m) =>
     m.compose(new THREE.Vector3(x, hAt(x, y) + s * 0.55, -y), new THREE.Quaternion(), new THREE.Vector3(s, s * 0.7, s)));
-  for (const [x, y, s] of SHRUB_BALLS) physics.addCircle(x, y, s * 0.9);
+  for (const [x, y, s] of SHRUB_BALLS) if (!clashes(x, y, s + 0.3)) physics.addCircle(x, y, s * 0.9);
 
   // 붉은 벽돌 담
   const brickMat = new THREE.MeshLambertMaterial({ color: 0x9a4a36, map: brickTexture() });
-  for (const line of BRICK_WALLS) segments(line, (ax, ay, bx, by, len, ang) => {
+  for (const line of BRICK_WALLS) segments(densify(line, 2), (ax, ay, bx, by, len, ang) => {
+    if (clashes((ax + bx) / 2, (ay + by) / 2, 0.4)) return;
     const m = new THREE.Mesh(new THREE.BoxGeometry(len, 0.9, 0.3), brickMat);
     m.position.set((ax + bx) / 2, hAt((ax + bx) / 2, (ay + by) / 2) + 0.45, -(ay + by) / 2); m.rotation.y = ang; scene.add(m);
     physics.addPolygon(thick(ax, ay, bx, by, 0.15));
@@ -299,4 +309,10 @@ function densify(pts, step) {
   }
   out.push(pts[pts.length - 1]);
   return out;
+}
+
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
 }

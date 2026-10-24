@@ -29,6 +29,7 @@ const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
 
 // Blender로 만든 건물 모델(id → Object3D)과, Blender에 넘길 건물 사양 목록
 let MODELS = null;
+const WATER = () => CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts);
 export const BUILDING_SPECS = [];
 
 /** ortho: 브이월드 항공사진(있으면 지형에 입히고 나무 위치를 사진에서 뽑는다) */
@@ -163,7 +164,8 @@ function road(pts, w, color, terrain) {
     if (i) along += Math.hypot(x - dense[i - 1][0], y - dense[i - 1][1]);
     for (const [px, py] of [[x + nx, y + ny], [x - nx, y - ny]]) pos.push(px, terrain.heightAt(px, py) + 0.1, -py);
     uv.push(0, along, w, along);
-    if (i) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    // 연못을 지나는 구간은 그리지 않는다 (물 밑에 길이 비쳐 보이는 오류 방지)
+    if (i && !WATER().some(p => signedDist((x + dense[i - 1][0]) / 2, (y + dense[i - 1][1]) / 2, p) < 1)) { const a = (i - 1) * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   });
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
