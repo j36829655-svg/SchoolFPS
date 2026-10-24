@@ -30,3 +30,10 @@
 - 나무 위치: 브이월드 항공사진에서 실행 중 자동 추출
 - 고도: AWS Terrain Tiles (SRTM)
 - 텍스처: ambientCG (CC0)
+
+## 건물 모델 다시 만들기 (Blender)
+
+건물은 Blender 스크립트가 만든 `assets/models/buildings.glb`를 쓴다. 맵 데이터를 고친 뒤 다시 만들려면:
+
+1. 로컬 서버(`tools/serve.ps1`)로 게임을 열고 콘솔에서 `game.exportSpecs()` → `tools/blender/spec.json` 저장
+2. `blender -b --factory-startup -P tools/blender/build.py -- tools/blender/spec.json assets/models/buildings.glb`

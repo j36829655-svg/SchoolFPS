@@ -3,7 +3,8 @@ import { CAMPUS } from './data/campus.js';
 import { TERRAIN } from './data/terrain.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { buildWorld } from './world.js';
+import { buildWorld, BUILDING_SPECS } from './world.js';
+import { loadModels } from './models.js';
 import { loadTextures, tiled } from './textures.js';
 import { applyAlignment } from './align.js';
 import { loadOrtho, applyOrtho } from './ortho.js';
@@ -62,7 +63,8 @@ const ortho = await Promise.race([
 ]);
 startEl.innerHTML = startHtml;
 const orthoMsg = ortho ? '항공사진·건물: 브이월드(국토교통부) · 도로: OpenStreetMap' : '항공사진을 불러오지 못했어요 (기본 잔디 사용)';
-const terrain = buildWorld(scene, physics, ortho && { ...ortho, apply: mesh => applyOrtho(mesh, ortho, tiled('grass', 2.5)) });
+const models = await loadModels().catch(e => { console.warn('Blender 모델 없음', e); return null; });
+const terrain = buildWorld(scene, physics, ortho && { ...ortho, apply: mesh => applyOrtho(mesh, ortho, tiled('grass', 2.5)) }, models);
 // 건물·나무·소품은 그림자를 드리우고, 땅과 바닥은 그림자를 받는다
 scene.traverse(o => {
   if (!o.isMesh) return;
@@ -77,7 +79,10 @@ physics.resolve(body.pos, body.radius);
 body.z = groundAt(body.pos.x, body.pos.y);
 let yaw = SPAWN.yaw, pitch = 0, flying = false, flyZ = 60;
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain, set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
+window.game = { body, physics, camera, scene, terrain,
+  // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
+  exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
+  set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
 
 // ── 입력 ──
 const keys = new Set();

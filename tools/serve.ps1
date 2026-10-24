@@ -9,6 +9,13 @@ Write-Host "SchoolFPS: http://localhost:$Port/"
 while ($listener.IsListening) {
   $ctx = $listener.GetContext()
   $rel = [Uri]::UnescapeDataString($ctx.Request.Url.AbsolutePath.TrimStart('/'))
+  # 개발용: 브라우저에서 만든 데이터를 tools/blender 폴더에 저장 (POST /__save?file=이름.json)
+  if ($ctx.Request.HttpMethod -eq 'POST' -and $rel -eq '__save') {
+    $name = [IO.Path]::GetFileName($ctx.Request.QueryString['file'])
+    $reader = New-Object IO.StreamReader($ctx.Request.InputStream, [Text.Encoding]::UTF8)
+    [IO.File]::WriteAllText((Join-Path $root "tools\blender\$name"), $reader.ReadToEnd(), (New-Object Text.UTF8Encoding $false))
+    $ctx.Response.StatusCode = 204; $ctx.Response.Close(); continue
+  }
   if ($rel -eq '') { $rel = 'index.html' }
   $full = [IO.Path]::GetFullPath((Join-Path $root $rel))
   if ($full.StartsWith($root) -and (Test-Path -LiteralPath $full -PathType Leaf)) {

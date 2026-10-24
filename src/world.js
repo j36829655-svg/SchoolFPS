@@ -27,8 +27,14 @@ const PITCH = { gable: 0.3, hip: 0.15, arch: 0.22 };
 
 const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
 
+// Blender로 만든 건물 모델(id → Object3D)과, Blender에 넘길 건물 사양 목록
+let MODELS = null;
+export const BUILDING_SPECS = [];
+
 /** ortho: 브이월드 항공사진(있으면 지형에 입히고 나무 위치를 사진에서 뽑는다) */
-export function buildWorld(scene, physics, ortho = null) {
+export function buildWorld(scene, physics, ortho = null, models = null) {
+  MODELS = models;
+  PARTS.forEach((p, i) => { p.id ??= `part_${p.parent}_${i}`; });
   const terrain = new Terrain();
 
   // 1) 지형 평탄화: 연못 → 운동장/코트 → 건물 터 순서
@@ -178,6 +184,18 @@ function building(b, ground) {
   const rise = sloped ? Math.min(PITCH[b.roofType] * o.W, b.h * 0.45) : 0;
   const eave = b.h - rise;
   const top = ground + (sloped ? eave : b.h);
+
+  BUILDING_SPECS.push({ id: b.id, pts: ccw(b.pts), ground, h: b.h, eave, rise, floors: Math.max(1, b.floors), style, endStyle: b.endStyle ?? null,
+    roofType: b.roofType, wall: b.wall, roof: b.roof, accent: b.accent, endGlass: !!b.endGlass, obb: o });
+
+  // Blender 모델이 있으면 그것을 쓰고, 지붕 위 설비(태양광·난간)만 덧붙인다
+  const model = MODELS?.get(b.id);
+  if (model) {
+    group.add(model);
+    if (b.solar) group.add(solarPanels(b.pts, o, top - 0.6));
+    if (b.railing) group.add(roofRailing(b.pts, top));
+    return group;
+  }
 
   const floorH = Math.max(2.6, (sloped ? eave : b.h - 0.6) / Math.max(1, b.floors));
   const sideMat = facadeMaterial(style, b.wall, b.accent, BAY[style], floorH);
@@ -498,7 +516,7 @@ function extraBuildings() {
 
 /** 항공사진에서 나무 그늘(짙은 초록)인 곳에만 나무를 심는다. 건물·도로·운동장·연못 위는 제외 */
 function treesFromOrtho(ortho, terrain, footprints) {
-  const STEP = 3.6, out = [];
+  const STEP = 5.5, out = []; // 간격이 넓을수록 나무가 적다 (3.6 → 5.5: 약 57% 감소)
   const x0 = terrain.x0, y0 = terrain.y0, x1 = x0 + (terrain.nx - 1) * 2.5, y1 = y0 + (terrain.ny - 1) * 2.5;
   const box = p => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (const [x, y] of p) { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); } return [a, b, c, d]; };
   const areas = [...footprints.map(p => ({ p, m: 1.5 })), ...CAMPUS.grounds.map(g => ({ p: g.pts, m: 0.5 })), { p: circlePts(CAMPUS.amphitheater.center, CAMPUS.amphitheater.r + 1, 12), m: 0 }]
@@ -510,7 +528,7 @@ function treesFromOrtho(ortho, terrain, footprints) {
     n++;
     const jx = x + Math.sin(n * 12.9898) * 1.2, jy = y + Math.cos(n * 78.233) * 1.2;
     const [r, g, b] = ortho.sample(jx, jy), lum = (r + g + b) / 3;
-    if (!(g > r + 5 && g > b + 3 && lum < 92 && lum > 18)) continue;
+    if (!(g > r + 7 && g > b + 4 && lum < 85 && lum > 18)) continue; // 짙은 숲 그늘만
     if (areas.some(({ p, m, bb }) => jx > bb[0] - m && jx < bb[2] + m && jy > bb[1] - m && jy < bb[3] + m && signedDist(jx, jy, p) < m)) continue;
     if (segs.some(([ax, ay, bx, by, w]) => segDist(jx, jy, ax, ay, bx, by) < w)) continue;
     out.push([jx, jy, lum < 58 ? 0 : 1, 0.75 + ((n * 7) % 10) / 16]);
