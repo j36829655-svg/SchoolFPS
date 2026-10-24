@@ -23,11 +23,12 @@ const STYLE_BY_ID = {
   small_mid: 'shed', blue_shed: 'shed', main_sw: 'shed', shed_n: 'shed',
 };
 const BAY = { ribbon: 2, grid: 3, glass: 1.5, remnant: 4, cottage: 4, dorm: 3.5, brick: 3, shed: 3, curtain: 1.5, louver: 1.2, tower: 1.5, concrete: 3.5, rustframe: 6, dormSide: 3, dormEnd: 3.4 };
-const PITCH = { gable: 0.3, hip: 0.15, arch: 0.35 };
+const PITCH = { gable: 0.3, hip: 0.15, arch: 0.22 };
 
 const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
 
-export function buildWorld(scene, physics) {
+/** ortho: 브이월드 항공사진(있으면 지형에 입히고 나무 위치를 사진에서 뽑는다) */
+export function buildWorld(scene, physics, ortho = null) {
   const terrain = new Terrain();
 
   // 1) 지형 평탄화: 연못 → 운동장/코트 → 건물 터 순서
@@ -46,6 +47,7 @@ export function buildWorld(scene, physics) {
   levels.set(a, terrain.flatten(amphiPts, { margin: 0, blend: 5 }));
 
   scene.add(terrainMesh(terrain));
+  ortho?.apply(terrain.mesh);
 
   // 2) 지면 구역
   for (const g of CAMPUS.grounds) {
@@ -59,9 +61,8 @@ export function buildWorld(scene, physics) {
       const surface = { dirt: ['dirt', 5, 0xffffff], asphalt: ['asphalt', 4, 0xffffff], farm: ['dirt', 3, 0xa88a6a] }[g.type];
       const mat = lines ? new THREE.MeshLambertMaterial({ color: GROUND_COLORS[g.type], map: courtLines(g.type) })
         : new THREE.MeshLambertMaterial({ color: surface?.[2] ?? GROUND_COLORS[g.type], map: surface ? tiled(surface[0], surface[1]) : null });
-      const dm = decal(g.pts, y + 0.04, mat, lines);
-      if (!lines) dm.userData.orthoHide = true; // 항공사진이 들어오면 실제 사진으로 대신 보인다
-      scene.add(dm);
+      if (ortho && !lines) continue; // 항공사진에 실제 흙·아스팔트가 이미 보인다
+      scene.add(decal(g.pts, y + 0.04, mat, lines));
     }
   }
 
@@ -85,7 +86,8 @@ export function buildWorld(scene, physics) {
 
   for (const b of extra) { scene.add(building(b, levels.get(b))); physics.addPolygon(b.pts); }
 
-  addTrees(scene, physics, terrain, [...CAMPUS.buildings, ...extra].map(b => b.pts));
+  const footprints = [...CAMPUS.buildings, ...extra, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts);
+  addTrees(scene, physics, terrain, footprints, ortho ? treesFromOrtho(ortho, terrain, footprints) : null);
   buildProps(scene, physics, terrain);
   return terrain;
 }
@@ -186,6 +188,8 @@ function building(b, ground) {
   const roofMat = new THREE.MeshStandardMaterial({ color: b.roof, map: tiled(sloped ? 'metalroof' : 'concrete', sloped ? 4 : 6), roughness: sloped ? 0.8 : 0.9, metalness: sloped ? 0.1 : 0, side: THREE.DoubleSide });
   if (!sloped) {
     group.add(decal(b.pts, top - 0.6, roofMat)); // 0.6m 파라펫 안쪽 평지붕
+    if (b.solar) group.add(solarPanels(b.pts, o, top - 0.6));
+    if (b.railing) group.add(roofRailing(b.pts, top));
   } else {
     // 박공 삼각면: 유리(태초관) / 지붕색(도서관 같은 단층집, 로드뷰에서 짙은 회색) / 벽색
     const gableMat = b.endGlass ? new THREE.MeshLambertMaterial({ color: 0x6fa8a8, transparent: true, opacity: 0.6, side: THREE.DoubleSide })
@@ -390,7 +394,7 @@ function courtLines(type) {
 
 // ───────────── 나무 ─────────────
 
-function addTrees(scene, physics, terrain, footprints) {
+function addTrees(scene, physics, terrain, footprints, fromOrtho) {
   // 침엽수: 원뿔 3단, 활엽수: 덩어리 4개를 합친 수관
   const layer = (r, h, y) => new THREE.ConeGeometry(r, h, 8).translate(0, y, 0);
   const blob = (r, x, y, z) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z);
@@ -399,9 +403,10 @@ function addTrees(scene, physics, terrain, footprints) {
     { crown: mergeGeometries([blob(2.2, 0, 0, 0), blob(1.7, 1.4, 0.6, 0.4), blob(1.6, -1.2, 0.8, -0.6), blob(1.4, 0.2, 1.7, 0.9)]), color: 0x4f7d3a, crownY: 5.2, list: [] },
   ];
   // 브이월드 건물 자리에 걸친 나무는 뺀다
-  for (const t of TREES) if (footprints.every(p => signedDist(t[0], t[1], p) > 1)) kinds[t[2]].list.push(t);
+  if (fromOrtho) for (const t of fromOrtho) kinds[t[2]].list.push(t);
+  else for (const t of TREES) if (footprints.every(p => signedDist(t[0], t[1], p) > 1)) kinds[t[2]].list.push(t);
 
-  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 4, 6), new THREE.MeshLambertMaterial({ color: 0x5b4330 }), TREES.length);
+  const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 4, 6), new THREE.MeshLambertMaterial({ color: 0x5b4330 }), kinds[0].list.length + kinds[1].list.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   let ti = 0;
   for (const k of kinds) {
@@ -481,11 +486,69 @@ function extraBuildings() {
   VW_BUILDINGS.forEach(([floors, height, pts], i) => {
     if (used.has(i)) return;
     const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
-    if (CAMPUS.buildings.some(b => signedDist(cx, cy, b.pts) < 1)) return; // 이미 측정한 건물과 겹치면 생략
+    // 이미 있는 건물과 겹치면 생략 (꼭짓점이 안에 들어가거나 중심이 겹치는 경우)
+    if (CAMPUS.buildings.some(b => signedDist(cx, cy, b.pts) < 1 || pts.some(([x, y]) => signedDist(x, y, b.pts) < -0.5))) return;
     let area = 0; for (let k = 0; k < pts.length; k++) { const [x1, y1] = pts[k], [x2, y2] = pts[(k + 1) % pts.length]; area += x1 * y2 - x2 * y1; }
     const small = Math.abs(area) / 2 < 150, f = Math.max(1, floors);
     out.push({ id: 'vw' + i, vw: i, pts, floors: f, h: height > 0 ? height : f * 3.2 + (small ? 1.8 : 0.6),
       roofType: small ? 'gable' : 'flat', wall: '#ecebe6', roof: small ? '#5a5f66' : '#c9cccf', accent: '#6b7a8a' });
   });
   return out;
+}
+
+/** 항공사진에서 나무 그늘(짙은 초록)인 곳에만 나무를 심는다. 건물·도로·운동장·연못 위는 제외 */
+function treesFromOrtho(ortho, terrain, footprints) {
+  const STEP = 3.6, out = [];
+  const x0 = terrain.x0, y0 = terrain.y0, x1 = x0 + (terrain.nx - 1) * 2.5, y1 = y0 + (terrain.ny - 1) * 2.5;
+  const box = p => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (const [x, y] of p) { a = Math.min(a, x); b = Math.min(b, y); c = Math.max(c, x); d = Math.max(d, y); } return [a, b, c, d]; };
+  const areas = [...footprints.map(p => ({ p, m: 1.5 })), ...CAMPUS.grounds.map(g => ({ p: g.pts, m: 0.5 })), { p: circlePts(CAMPUS.amphitheater.center, CAMPUS.amphitheater.r + 1, 12), m: 0 }]
+    .map(o => ({ ...o, bb: box(o.p) }));
+  const segs = [];
+  for (const r of CAMPUS.roads) for (let i = 0; i < r.pts.length - 1; i++) segs.push([...r.pts[i], ...r.pts[i + 1], r.w / 2 + 1.5]);
+  let n = 0;
+  for (let y = y0 + 2; y < y1 - 2; y += STEP) for (let x = x0 + 2; x < x1 - 2; x += STEP) {
+    n++;
+    const jx = x + Math.sin(n * 12.9898) * 1.2, jy = y + Math.cos(n * 78.233) * 1.2;
+    const [r, g, b] = ortho.sample(jx, jy), lum = (r + g + b) / 3;
+    if (!(g > r + 5 && g > b + 3 && lum < 92 && lum > 18)) continue;
+    if (areas.some(({ p, m, bb }) => jx > bb[0] - m && jx < bb[2] + m && jy > bb[1] - m && jy < bb[3] + m && signedDist(jx, jy, p) < m)) continue;
+    if (segs.some(([ax, ay, bx, by, w]) => segDist(jx, jy, ax, ay, bx, by) < w)) continue;
+    out.push([jx, jy, lum < 58 ? 0 : 1, 0.75 + ((n * 7) % 10) / 16]);
+  }
+  return out;
+}
+
+function segDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l2)) : 0;
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+/** 평지붕 위 태양광 패널 줄 (남쪽으로 기울어진 짙은 파란 판) */
+function solarPanels(pts, o, roofZ) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x1f2f4a, roughness: 0.25, metalness: 0.5 });
+  const items = [];
+  for (let v = -o.W / 2 + 1.5; v < o.W / 2 - 1.2; v += 2.4) for (let u = -o.L / 2 + 1.5; u < o.L / 2 - 1.5; u += 2.1) {
+    const x = o.cx + u * o.ux - v * o.uy, y = o.cy + u * o.uy + v * o.ux;
+    if (signedDist(x, y, pts) < -1) items.push([x, y]);
+  }
+  const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2, 0.06, 1.6), mat, items.length);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.3, Math.atan2(o.uy, o.ux), 0, 'YXZ'));
+  items.forEach(([x, y], i) => mesh.setMatrixAt(i, m.compose(new THREE.Vector3(x, roofZ + 0.6, -y), q, new THREE.Vector3(1, 1, 1))));
+  return mesh;
+}
+
+/** 옥상 가장자리 금속 난간 (기둥 + 위쪽 가로대) */
+function roofRailing(pts, z) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x9aa1a8, roughness: 0.4, metalness: 0.6 }), g = new THREE.Group();
+  for (let i = 0; i < pts.length; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length], len = Math.hypot(bx - ax, by - ay);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.05, 0.05), mat);
+    rail.position.set((ax + bx) / 2, z + 1.1, -(ay + by) / 2); rail.rotation.y = Math.atan2(by - ay, bx - ax); g.add(rail);
+    for (let t = 0; t < len; t += 1.5) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.1, 0.04), mat);
+      post.position.set(ax + (bx - ax) * t / len, z + 0.55, -(ay + (by - ay) * t / len)); g.add(post);
+    }
+  }
+  return g;
 }

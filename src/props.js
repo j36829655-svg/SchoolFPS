@@ -65,7 +65,7 @@ export function buildProps(scene, physics, terrain) {
   });
 
   // 가드레일 (기둥 + 판)
-  for (const line of GUARDRAILS) segments(line, (ax, ay, bx, by, len, ang) => {
+  for (const gr of GUARDRAILS) segments(guardrailLine(gr), (ax, ay, bx, by, len, ang) => {
     const n = Math.ceil(len / 2.5);
     for (let i = 0; i <= n; i++) { const x = ax + (bx - ax) * i / n, y = ay + (by - ay) * i / n; place(cyl(0.06, 0.06, 0.8, MAT.metal, 0, 0.4, 0), x, y); }
     const r = box(len, 0.3, 0.06, MAT.rail); r.position.set((ax + bx) / 2, hAt((ax + bx) / 2, (ay + by) / 2) + 0.65, -(ay + by) / 2); r.rotation.y = ang; scene.add(r);
@@ -74,13 +74,13 @@ export function buildProps(scene, physics, terrain) {
 
   // 철쭉 (분홍 덤불, 인스턴스)
   const azaleas = [];
-  for (const road of AZALEA_ROADS) segments(road, (ax, ay, bx, by, len) => {
+  for (const az of AZALEA_ROADS) { const r = CAMPUS.roads.find(x => x.name === az.road), [bx0, by0, bx1, by1] = az.box; segments(densify(r.pts, 3).filter(([x, y]) => x >= bx0 && y >= by0 && x <= bx1 && y <= by1), (ax, ay, bx, by, len) => {
     const ux = (bx - ax) / len, uy = (by - ay) / len;
     for (let t = 2; t < len - 2; t += 2.2) for (const side of [-1, 1]) {
       if (Math.sin(t * 3.1 + side * 7 + ax) > 0.55) continue;
-      azaleas.push([ax + ux * t - uy * side * 4.8, ay + uy * t + ux * side * 4.8]);
+      const off = r.w / 2 + 1.6; azaleas.push([ax + ux * t - uy * side * off, ay + uy * t + ux * side * off]);
     }
-  });
+  }); }
   instanced(scene, new THREE.IcosahedronGeometry(0.55, 1), new THREE.MeshLambertMaterial({ color: 0xd9559a }), azaleas, ([x, y], m, i) =>
     m.compose(new THREE.Vector3(x, hAt(x, y) + 0.45, -y), new THREE.Quaternion(), new THREE.Vector3(1.2, 0.7 + (i % 3) * 0.1, 1)));
 
@@ -229,7 +229,7 @@ function roadside(scene, physics, terrain) {
     m.compose(new THREE.Vector3(x, hAt(x, y) + 0.09, -y), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ang), new THREE.Vector3(1, 1, 1)));
 
   // 가로수: 은행나무처럼 위로 길쭉한 수관
-  const trees = alongPolyline(road.pts, STREET.treeEvery, road.w / 2 + 2.2, 4).concat(alongPolyline(road.pts, STREET.treeEvery, -(road.w / 2 + 2.2), 8))
+  const trees = !STREET.treeEvery ? [] : alongPolyline(road.pts, STREET.treeEvery, road.w / 2 + 2.2, 4).concat(alongPolyline(road.pts, STREET.treeEvery, -(road.w / 2 + 2.2), 8))
     .filter(([x, y]) => clear(x, y, 2.5));
   const crown = new THREE.IcosahedronGeometry(1, 1).scale(1.8, 3.2, 1.8);
   instanced(scene, crown, new THREE.MeshLambertMaterial({ color: 0x8fb04f }), trees, ([x, y], m, i) =>
@@ -258,4 +258,31 @@ function brickTexture() {
   for (let y = 0; y < 64; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(64, y); g.stroke(); for (let x = (y / 8) % 2 * 8; x < 64; x += 16) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } }
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(4, 1); t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+/** 도로 선(box 범위 안)을 도로 가장자리 + 0.7m 만큼 옆으로 옮긴 선. 기준점(toward/away)으로 어느 쪽인지 고른다 */
+function guardrailLine({ road, box, toward, away }) {
+  const r = CAMPUS.roads.find(x => x.name === road);
+  const pts = densify(r.pts, 3).filter(([x, y]) => x >= box[0] && y >= box[1] && x <= box[2] && y <= box[3]);
+  if (pts.length < 2) return [];
+  const off = r.w / 2 + 0.7;
+  const shift = s => pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    return [p[0] - dy / l * off * s, p[1] + dx / l * off * s];
+  });
+  const L = shift(1), R = shift(-1), ref = toward ?? away, mid = l => l[Math.floor(l.length / 2)];
+  const dl = Math.hypot(mid(L)[0] - ref[0], mid(L)[1] - ref[1]), dr = Math.hypot(mid(R)[0] - ref[0], mid(R)[1] - ref[1]);
+  return (dl < dr) === !!toward ? L : R;
+}
+
+/** 폴리라인을 step m 간격 점으로 촘촘하게 */
+function densify(pts, step) {
+  const out = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i], [bx, by] = pts[i + 1], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / step));
+    for (let k = 0; k < n; k++) out.push([ax + (bx - ax) * k / n, ay + (by - ay) * k / n]);
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
 }

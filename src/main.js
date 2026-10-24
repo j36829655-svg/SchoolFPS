@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
+import { TERRAIN } from './data/terrain.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildWorld } from './world.js';
@@ -8,7 +9,7 @@ import { applyAlignment } from './align.js';
 import { loadOrtho, applyOrtho } from './ortho.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
-const SPAWN = { x: -40, y: -150, yaw: 0.6 }; // 주차장 근처, 북동쪽(학교 중심)을 바라봄
+const SPAWN = { x: -76, y: -180, yaw: -0.4 }; // 정문 진입로, 북북동(학교 안쪽)을 바라봄
 const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(200)); // 고도 42°, 남남서
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -46,20 +47,22 @@ scene.add(sun, sun.target);
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 3000);
 camera.rotation.order = 'YXZ';
 
+const startEl = document.getElementById('start');
+const startHtml = startEl.innerHTML;
 await loadTextures();
 applyAlignment(); // 측정 좌표 → 브이월드 실제 좌표
 const physics = new Physics(CAMPUS.bounds);
-const terrain = buildWorld(scene, physics);
 
-// 항공사진은 게임을 막지 않고 뒤에서 받아 입힌다
-let orthoMsg = '항공사진 불러오는 중';
-loadOrtho([terrain.x0, terrain.y0, terrain.x0 + (terrain.nx - 1) * 2.5, terrain.y0 + (terrain.ny - 1) * 2.5], (d, n) => { orthoMsg = `항공사진 ${d}/${n}`; })
-  .then(o => {
-    if (!o) { orthoMsg = '항공사진을 불러오지 못했어요 (기본 잔디 사용)'; return; }
-    applyOrtho(terrain.mesh, o, tiled('grass', 2.5));
-    scene.traverse(m => { if (m.userData.orthoHide) m.visible = false; });
-    orthoMsg = '항공사진·건물: 브이월드(국토교통부)';
-  });
+// 항공사진을 먼저 받는다: 지형 색과 나무 위치를 실제 사진에서 뽑기 위해 (최대 15초, 실패하면 기본 잔디·기존 나무)
+const T = TERRAIN, terrainBox = [T.x0, T.y0, T.x0 + (T.nx - 1) * T.step, T.y0 + (T.ny - 1) * T.step];
+startEl.innerHTML = '항공사진 불러오는 중…';
+const ortho = await Promise.race([
+  loadOrtho(terrainBox, (d, n) => { startEl.innerHTML = `항공사진 불러오는 중… ${d}/${n}`; }),
+  new Promise(res => setTimeout(() => res(null), 15000)),
+]);
+startEl.innerHTML = startHtml;
+const orthoMsg = ortho ? '항공사진·건물: 브이월드(국토교통부) · 도로: OpenStreetMap' : '항공사진을 불러오지 못했어요 (기본 잔디 사용)';
+const terrain = buildWorld(scene, physics, ortho && { ...ortho, apply: mesh => applyOrtho(mesh, ortho, tiled('grass', 2.5)) });
 // 건물·나무·소품은 그림자를 드리우고, 땅과 바닥은 그림자를 받는다
 scene.traverse(o => {
   if (!o.isMesh) return;
@@ -72,20 +75,23 @@ const groundAt = (x, y) => terrain.heightAt(x, y);
 const body = new Body(physics, SPAWN.x, SPAWN.y, groundAt);
 physics.resolve(body.pos, body.radius);
 body.z = groundAt(body.pos.x, body.pos.y);
-let yaw = SPAWN.yaw, pitch = 0, flying = false, flyHeight = 60;
-// 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근)
-window.game = { body, physics, camera, scene, terrain, set view(v) { ({ yaw, pitch, flying, flyHeight } = { yaw, pitch, flying, flyHeight, ...v }); } };
+let yaw = SPAWN.yaw, pitch = 0, flying = false, flyZ = 60;
+// 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
+window.game = { body, physics, camera, scene, terrain, set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
 
 // ── 입력 ──
 const keys = new Set();
 addEventListener('keydown', e => {
   keys.add(e.code);
-  if (e.code === 'KeyF') { flying = !flying; if (flying) flyHeight = body.z + 40; else body.z = Math.max(body.z, groundAt(body.pos.x, body.pos.y)); }
+  if (e.code === 'KeyF') {
+    flying = !flying;
+    if (flying) flyZ = body.z + EYE;
+    else { body.z = Math.max(flyZ - EYE, groundAt(body.pos.x, body.pos.y)); body.vz = 0; body.onGround = false; } // 내리면 그 자리에서 떨어진다
+  }
 });
 addEventListener('keyup', e => keys.delete(e.code));
 // 마우스 잠금이 안 되는 환경(일부 브라우저, 앱 내장 브라우저)에서도 움직일 수 있게
 // '플레이 중' 여부는 직접 관리하고, 잠금이 없으면 마우스 버튼을 누른 채 끌어서 시점을 돌린다.
-const startEl = document.getElementById('start');
 let playing = false, dragging = false;
 function setPlaying(v) {
   playing = v;
@@ -134,11 +140,15 @@ function tick() {
   const wish = { x: (-sin * f + cos * s) / len, y: (cos * f + sin * s) / len };
 
   if (flying) {
-    const sp = FLY * (keys.has('ShiftLeft') ? 3 : 1);
-    body.pos.x += wish.x * sp * dt; body.pos.y += wish.y * sp * dt;
-    if (keys.has('Space')) flyHeight += sp * dt;
-    if (keys.has('KeyC') || keys.has('ControlLeft')) flyHeight = Math.max(groundAt(body.pos.x, body.pos.y) + 2, flyHeight - sp * dt);
-    camera.position.set(body.pos.x, flyHeight, -body.pos.y);
+    // 개발용 자유 비행: W/S는 바라보는 방향(위아래 포함)으로, Space·E 위로, C·Q·Ctrl 아래로. 벽을 통과한다
+    const sp = FLY * (keys.has('ShiftLeft') ? 3 : 1), cp = Math.cos(pitch);
+    let up = 0;
+    if (active && (keys.has('Space') || keys.has('KeyE'))) up += 1;
+    if (active && (keys.has('KeyC') || keys.has('KeyQ') || keys.has('ControlLeft'))) up -= 1;
+    body.pos.x += (-sin * cp * f + cos * s) * sp * dt;
+    body.pos.y += (cos * cp * f + sin * s) * sp * dt;
+    flyZ = Math.max(groundAt(body.pos.x, body.pos.y) + 1, flyZ + (Math.sin(pitch) * f + up) * sp * dt);
+    camera.position.set(body.pos.x, flyZ, -body.pos.y);
   } else {
     body.step(dt, wish, keys.has('ShiftLeft') ? RUN : WALK, active && keys.has('Space'));
     camera.position.set(body.pos.x, body.z + EYE, -body.pos.y);

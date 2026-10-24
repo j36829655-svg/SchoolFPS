@@ -34,7 +34,23 @@ export async function loadOrtho([x0, y0, x1, y1], onProgress) {
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 8;
   const W = cols * TILE, H = rows * TILE, ox = tx0 * TILE, oy = ty0 * TILE;
-  return { tex, uvAt: (x, y) => { const [px, py] = toPx(x, y); return [(px - ox) / W, 1 - (py - oy) / H]; } };
+  // 색 샘플링용으로 1/4 크기(약 1m/픽셀) 평균 이미지를 만들어 둔다
+  const sw = W / 4, sh = H / 4, small = document.createElement('canvas');
+  small.width = sw; small.height = sh;
+  const sg = small.getContext('2d', { willReadFrequently: true });
+  sg.drawImage(canvas, 0, 0, sw, sh);
+  const px = sg.getImageData(0, 0, sw, sh).data;
+  return {
+    tex,
+    uvAt: (x, y) => { const [u, v] = toPx(x, y); return [(u - ox) / W, 1 - (v - oy) / H]; },
+    /** (x, y) m 지점의 평균 색 [r, g, b] */
+    sample: (x, y) => {
+      const [u, v] = toPx(x, y), i = Math.floor((u - ox) / 4), j = Math.floor((v - oy) / 4);
+      if (i < 0 || j < 0 || i >= sw || j >= sh) return [0, 0, 0];
+      const k = (j * sw + i) * 4;
+      return [px[k], px[k + 1], px[k + 2]];
+    },
+  };
 }
 
 /** 지형 메시에 항공사진을 입히고, 가까이서 보면 잔디 질감이 살짝 겹쳐 보이게 한다 */

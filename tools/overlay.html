@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Map overlay check</title>
+<style>body { margin: 0; background: #222; } canvas { display: block; } #legend { position: fixed; left: 8px; top: 8px; background: rgba(0,0,0,.7); color: #fff; font: 12px sans-serif; padding: 6px 8px; line-height: 1.5; }</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }</script>
+</head>
+<body>
+<div id="legend">빨강 = 측정 건물 · 주황 = 브이월드 추가 건물 · 노랑 = 도로(폭) · 하늘 = 브이월드 도로 중심선 · 초록 점 = 나무</div>
+<canvas id="c"></canvas>
+<script type="module">
+// 개발용: 항공사진 위에 맵 데이터를 겹쳐 보는 점검 페이지. ?x0=-60&y0=-80&x1=60&y1=40 처럼 영역(m)을 지정
+import { CAMPUS } from '../src/data/campus.js';
+import { TREES } from '../src/data/trees.js';
+import { VW_BUILDINGS } from '../src/data/vworld_buildings.js';
+import { VW_ROADS } from '../src/data/vworld_roads.js';
+import { OSM_ROADS } from '../src/data/osm_roads.js';
+import { applyAlignment } from '../src/align.js';
+applyAlignment();
+
+const q = new URLSearchParams(location.search);
+const [x0, y0, x1, y1] = ['x0', 'y0', 'x1', 'y1'].map((k, i) => +(q.get(k) ?? [-160, -200, 190, 175][i]));
+const KEY = 'F561D07B-0141-4794-B0AF-253AAA0E0FEB', Z = 19, N = 2 ** Z;
+const LAT0 = 36.9178469, LON0 = 126.4636158, MLON = 111320 * Math.cos(LAT0 * Math.PI / 180), MLAT = 110574;
+const toPx = (x, y) => { const lon = LON0 + x / MLON, lat = LAT0 + y / MLAT, r = lat * Math.PI / 180; return [(lon + 180) / 360 * N * 256, (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * N * 256]; };
+const [ax, ay] = toPx(x0, y1), [bx, by] = toPx(x1, y0);
+const scale = Math.min(innerWidth / (bx - ax), innerHeight / (by - ay));
+const cv = document.getElementById('c'); cv.width = (bx - ax) * scale; cv.height = (by - ay) * scale;
+const g = cv.getContext('2d');
+const P = (x, y) => { const [px, py] = toPx(x, y); return [(px - ax) * scale, (py - ay) * scale]; };
+
+const tiles = [];
+for (let ty = Math.floor(ay / 256); ty <= Math.floor(by / 256); ty++) for (let tx = Math.floor(ax / 256); tx <= Math.floor(bx / 256); tx++)
+  tiles.push(new Promise(res => { const im = new Image(); im.crossOrigin = 'anonymous'; im.onload = () => { g.drawImage(im, (tx * 256 - ax) * scale, (ty * 256 - ay) * scale, 256 * scale, 256 * scale); res(); }; im.onerror = res; im.src = `https://api.vworld.kr/req/wmts/1.0.0/${KEY}/Satellite/${Z}/${ty}/${tx}.jpeg`; }));
+await Promise.all(tiles);
+
+const poly = (pts, color, w = 2) => { g.strokeStyle = color; g.lineWidth = w; g.beginPath(); pts.forEach(([x, y], i) => { const [px, py] = P(x, y); i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.closePath(); g.stroke(); };
+const line = (pts, color, w) => { g.strokeStyle = color; g.lineWidth = w; g.lineJoin = 'round'; g.beginPath(); pts.forEach(([x, y], i) => { const [px, py] = P(x, y); i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.stroke(); };
+const mPx = scale / 0.2387; // 1m 당 화면 px (줌19 ≈ 0.2387 m/px)
+
+if (!q.get('clean')) for (const r of CAMPUS.roads) line(r.pts, 'rgba(255,220,0,0.45)', r.w * mPx);
+if (!q.get('clean')) for (const r of VW_ROADS) line(r.pts, '#3ff', 2);
+const used = new Set(CAMPUS.buildings.map(b => b.vw));
+VW_BUILDINGS.forEach(([, , pts], i) => { if (!used.has(i)) poly(pts, '#ffa500', 2); });
+for (const b of CAMPUS.buildings) { poly(b.pts, '#ff3030', 2.5); const [px, py] = P(...b.pts[0]); g.fillStyle = '#fff'; g.font = '11px sans-serif'; g.fillText(b.id, px, py); }
+if (!q.get('clean')) { g.fillStyle = 'rgba(80,255,80,0.9)';
+for (const [x, y] of TREES) { const [px, py] = P(x, y); if (px > 0 && py > 0 && px < cv.width && py < cv.height) g.fillRect(px - 1.5, py - 1.5, 3, 3); } }
+for (const gr of CAMPUS.grounds) poly(gr.pts, 'rgba(255,255,255,0.8)', 1.5);
+if (q.get('osm')) for (const r of OSM_ROADS) line(r.pts, '#ff00ff', 2.5);
+if (q.get('grid')) { // 10m 격자 + 좌표 표시
+  g.font = '10px sans-serif';
+  for (let x = Math.ceil(x0 / 10) * 10; x <= x1; x += 10) { const [px] = P(x, 0); g.strokeStyle = x % 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,0,0.6)'; g.lineWidth = 1; g.beginPath(); g.moveTo(px, 0); g.lineTo(px, cv.height); g.stroke(); g.fillStyle = '#ff0'; g.fillText(x, px + 2, 22); }
+  for (let y = Math.ceil(y0 / 10) * 10; y <= y1; y += 10) { const [, py] = P(0, y); g.strokeStyle = y % 50 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,0,0.6)'; g.beginPath(); g.moveTo(0, py); g.lineTo(cv.width, py); g.stroke(); g.fillStyle = '#0ff'; g.fillText(y, 2, py - 2); }
+}
+document.title = 'ready';
+</script>
+</body>
+</html>

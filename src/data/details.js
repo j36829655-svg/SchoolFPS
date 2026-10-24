@@ -9,9 +9,10 @@ export function rect(cx, cy, L, W, deg) {
 // 건물 값 덮어쓰기 (로드뷰에서 확인한 외관)
 export const OVERRIDES = {
   amen: { style: 'ribbon' },
-  taecho: { style: 'ribbon', roof: '#4a9a8f', endGlass: true },      // 흰 2층 + 청록 곡면 유리 지붕, 유리 마구리
+  taecho: { style: 'ribbon', h: 11, floors: 2, roof: '#4d5560', endGlass: true }, // 흰 2층 띠창 + 낮은 짙은 금속 아치 지붕, 끝면은 청록 유리 (로드뷰 02·03)
+  main_east: { solar: true }, main_west: { solar: true },            // 항공사진에 보이는 지붕 태양광 패널
   house_b: { style: 'louver', wall: '#cfd2d4' },                     // 세로 루버가 있는 회색 2층
-  remnant: { h: 8.5, floors: 2 },                                    // 2층 + 3층 높이 유리 탑(아래 parts)
+  remnant: { h: 8.5, floors: 2, railing: true },                     // 2층 + 3층 높이 유리 탑(아래 parts) + 옥상 난간 (로드뷰 09)
   girls_dorm: { style: 'grid', wall: '#e6dcc6' },                    // 베이지 벽 + 유리 구역(parts)
   // 사랑·소망·믿음동: 4층 평지붕, 긴 면은 갈색 나무 판, 도로 쪽 끝면은 콘크리트 격자 (로드뷰 15, 17, 22)
   sarang: { roofType: 'flat', h: 13.5, floors: 4, style: 'dormSide', endStyle: 'dormEnd', wall: '#b9b9b4', roof: '#7f8f7a' },
@@ -24,11 +25,12 @@ export const OVERRIDES = {
 export const PARTS = [
   { parent: 'remnant', pts: rect(-1, -39, 9, 8, -71.6), h: 11.5, floors: 3, roofType: 'flat', style: 'tower', wall: '#4f86c6', accent: '#9a4a2c', roof: '#d9dcdf' },
   { parent: 'remnant', pts: rect(0.6, -49.6, 6, 1.6, 45), h: 7.5, floors: 1, roofType: 'flat', style: 'rustframe', wall: '#9a4a2c', accent: '#9a4a2c', roof: '#9a4a2c' },
+  { parent: 'taecho', pts: rect(-83.6, -138.6, 3.8, 3.8, 50.3), h: 9.5, floors: 2, roofType: 'flat', style: 'curtain', wall: '#d8dde2', accent: '#3f6f7f', roof: '#d9dcdf' }, // 남쪽 모서리 유리 계단실 (로드뷰 02)
   { parent: 'library', pts: rect(35.5, -4, 6, 6, -53), h: 5.8, floors: 1, roofType: 'gable', style: 'cottage', wall: '#f3f1ea', accent: '#6b7a8a', roof: '#4b5057' },
   { parent: 'sarang', pts: rect(119.4, 110, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
   { parent: 'somang', pts: rect(117.4, 84.5, 3.5, 3.5, 40), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
   { parent: 'mideum', pts: rect(115.3, 59.9, 3.5, 3.5, 37), h: 14, floors: 4, roofType: 'flat', style: 'concrete', wall: '#b4b4ae', roof: '#9a9a95' },
-  { parent: 'girls_dorm', pts: rect(121, -63, 8, 6, -38.7), h: 12, floors: 3, roofType: 'flat', style: 'glass', wall: '#e6dcc6', accent: '#4f86c6', roof: '#eef0f1' },
+  { parent: 'girls_dorm', pts: rect(126.9, -59.2, 9.4, 4.2, -64.3), h: 12, floors: 3, roofType: 'flat', style: 'glass', wall: '#e6dcc6', accent: '#4f86c6', roof: '#eef0f1' },
 ];
 
 // 바닥 포장
@@ -59,12 +61,13 @@ export const HEDGES = [
   [[-72, -96], [-62, -103]],
   [[-12, -62], [4, -40]],
 ];
+// 가드레일: 도로 선을 따라 바깥쪽에 세운다 (실제 좌표). box = 이 범위 안의 도로 구간, toward/away = 어느 쪽에 세울지 기준점
 export const GUARDRAILS = [
-  [[-12, -164], [63, -144]],
-  [[117, -131], [141, -111], [150, -70], [144, -20]],
+  { road: '영전1길', box: [-25, -205, 75, -140], toward: [15, -130] }, // 연못 남쪽 (로드뷰 06)
+  { road: '영전1길', box: [115, -140, 165, -10], away: [80, -50] },    // 동쪽 도로 바깥 (로드뷰 07)
 ];
 // 철쭉: 이 도로 구간 양옆에 심는다
-export const AZALEA_ROADS = [[[36, -30], [68, -6], [91, 16]]];
+export const AZALEA_ROADS = [{ road: '교내 도로', box: [25, -45, 100, 25] }]; // 도서관~살롬하우스 구간 양옆 (실제 좌표, 로드뷰 12·21)
 
 // 주차된 차: [x, y, 방향(도)]
 export const CARS = [
@@ -75,6 +78,6 @@ export const CARS = [
 // 둥글게 다듬은 관목 (로드뷰 11, 21)
 export const SHRUB_BALLS = [[33, -12, 2.2], [26, -14, 1.2], [20, -12, 1.1], [48, -20, 1.0], [52, -16, 0.9], [-36, -98, 1.0], [-48, -112, 1.1], [0, -64, 1.0], [6, -60, 0.9]];
 // 교내 도로 가로수 간격(m)과 경계석 (로드뷰 12, 17)
-export const STREET = { road: '교내 도로', treeEvery: 9, curb: true };
+export const STREET = { road: '교내 도로', treeEvery: 0, curb: true }; // 가로수는 항공사진에서 뽑은 실제 나무를 쓴다 (0 = 인공 가로수 없음)
 // 입구 길 서쪽 붉은 벽돌 담 (로드뷰 01, 02)
 export const BRICK_WALLS = [[[-82, -186], [-79, -170], [-73, -152]]];

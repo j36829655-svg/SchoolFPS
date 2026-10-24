@@ -2,6 +2,8 @@ import { CAMPUS } from './data/campus.js';
 import { TREES } from './data/trees.js';
 import * as D from './data/details.js';
 import { VW_BUILDINGS } from './data/vworld_buildings.js';
+import { OSM_ROADS } from './data/osm_roads.js';
+import { signedDist } from './terrain.js';
 
 // 위성사진으로 측정한 좌표를 브이월드 측량 좌표(실제 위치)에 맞추는 보정.
 // 건물 30동을 브이월드 건물과 짝지어 최소제곱으로 구함: 실제 = 측정 × S + (TX, TY), 평균 오차 2.8m
@@ -37,7 +39,7 @@ export function applyAlignment() {
   for (const p of D.PARTS) pts(p.pts);
   for (const p of D.PAVINGS) pts(p.pts);
   for (const p of D.SIDEWALKS) pts(p.pts);
-  for (const line of [...D.HEDGES, ...D.GUARDRAILS, ...D.AZALEA_ROADS, ...D.BRICK_WALLS]) pts(line);
+  for (const line of [...D.HEDGES, ...D.BRICK_WALLS]) pts(line);
   for (const p of D.PROPS) { const q = [p[1], p[2]]; P(q); p[1] = q[0]; p[2] = q[1]; }
   for (const c of D.CARS) P(c);
   for (const b of D.SHRUB_BALLS) P(b);
@@ -51,4 +53,21 @@ export function applyAlignment() {
     b.vw = i;
     if (!SEEN.has(b.id) && floors > 0 && floors !== b.floors) { b.h = b.h / Math.max(1, b.floors) * floors; b.floors = floors; }
   }
+
+  // 짝이 없던 측정 건물도 브이월드 건물과 겹치면 그 외곽선으로 (같은 건물이 두 번 생기지 않게)
+  const used = new Set(CAMPUS.buildings.map(b => b.vw).filter(v => v !== undefined));
+  const cen = p => [p.reduce((a, q) => a + q[0], 0) / p.length, p.reduce((a, q) => a + q[1], 0) / p.length];
+  for (const b of CAMPUS.buildings) {
+    if (b.vw !== undefined) continue;
+    const [cx, cy] = cen(b.pts);
+    const i = VW_BUILDINGS.findIndex(([, , p], k) => !used.has(k) && (signedDist(cx, cy, p) < 0 || signedDist(...cen(p), b.pts) < 0));
+    if (i >= 0) { b.pts = VW_BUILDINGS[i][2].map(p => [...p]); b.vw = i; used.add(i); }
+  }
+
+  // 큰 도로는 OpenStreetMap 선형으로 바꾼다 (항공사진과 겹쳐 보니 실제 도로와 일치)
+  const osm = id => OSM_ROADS.find(r => r.id === id).pts.filter(([x, y]) => Math.abs(x) < 360 && y > -320 && y < 350).map(p => [...p]);
+  const road = name => CAMPUS.roads.find(r => r.name === name);
+  road('영전1길').pts = osm(1383485684);
+  road('교내 도로').pts = osm(1383485686);
+  CAMPUS.roads.push({ type: 'concrete', name: '주차장 진입로', w: 5, pts: osm(645595868) });
 }
