@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
 import { TREES } from './data/trees.js';
-import { Terrain } from './terrain.js';
+import { Terrain, signedDist } from './terrain.js';
+import { VW_BUILDINGS } from './data/vworld_buildings.js';
 import { OVERRIDES, PARTS } from './data/details.js';
 import { buildProps } from './props.js';
 import { IMG, tiled } from './textures.js';
@@ -37,6 +38,8 @@ export function buildWorld(scene, physics) {
     levels.set(g, terrain.flatten(g.pts, opt));
   }
   for (const b of CAMPUS.buildings) levels.set(b, terrain.flatten(b.pts, { margin: 2, blend: 6 }));
+  const extra = extraBuildings();
+  for (const b of extra) levels.set(b, terrain.flatten(b.pts, { margin: 1.5, blend: 5 }));
   for (const g of CAMPUS.greenhouses) levels.set(g, terrain.flatten(g.pts, { margin: 1, blend: 4 }));
   const a = CAMPUS.amphitheater;
   const amphiPts = circlePts(a.center, a.r + 2, 16);
@@ -56,7 +59,9 @@ export function buildWorld(scene, physics) {
       const surface = { dirt: ['dirt', 5, 0xffffff], asphalt: ['asphalt', 4, 0xffffff], farm: ['dirt', 3, 0xa88a6a] }[g.type];
       const mat = lines ? new THREE.MeshLambertMaterial({ color: GROUND_COLORS[g.type], map: courtLines(g.type) })
         : new THREE.MeshLambertMaterial({ color: surface?.[2] ?? GROUND_COLORS[g.type], map: surface ? tiled(surface[0], surface[1]) : null });
-      scene.add(decal(g.pts, y + 0.04, mat, lines));
+      const dm = decal(g.pts, y + 0.04, mat, lines);
+      if (!lines) dm.userData.orthoHide = true; // 항공사진이 들어오면 실제 사진으로 대신 보인다
+      scene.add(dm);
     }
   }
 
@@ -78,7 +83,9 @@ export function buildWorld(scene, physics) {
     physics.addPolygon(p.pts);
   }
 
-  addTrees(scene, physics, terrain);
+  for (const b of extra) { scene.add(building(b, levels.get(b))); physics.addPolygon(b.pts); }
+
+  addTrees(scene, physics, terrain, [...CAMPUS.buildings, ...extra].map(b => b.pts));
   buildProps(scene, physics, terrain);
   return terrain;
 }
@@ -110,7 +117,9 @@ function terrainMesh(t) {
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: tiled('grass', 3) }));
+  const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: tiled('grass', 3) }));
+  t.mesh = mesh;
+  return mesh;
 }
 
 function decal(pts, y, mat, obbUV = false) {
@@ -381,7 +390,7 @@ function courtLines(type) {
 
 // ───────────── 나무 ─────────────
 
-function addTrees(scene, physics, terrain) {
+function addTrees(scene, physics, terrain, footprints) {
   // 침엽수: 원뿔 3단, 활엽수: 덩어리 4개를 합친 수관
   const layer = (r, h, y) => new THREE.ConeGeometry(r, h, 8).translate(0, y, 0);
   const blob = (r, x, y, z) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z);
@@ -389,7 +398,8 @@ function addTrees(scene, physics, terrain) {
     { crown: mergeGeometries([layer(2.4, 3.6, -1.6), layer(1.9, 3.2, 0.4), layer(1.2, 2.8, 2.2)]), color: 0x2f5a35, crownY: 6.5, list: [] },
     { crown: mergeGeometries([blob(2.2, 0, 0, 0), blob(1.7, 1.4, 0.6, 0.4), blob(1.6, -1.2, 0.8, -0.6), blob(1.4, 0.2, 1.7, 0.9)]), color: 0x4f7d3a, crownY: 5.2, list: [] },
   ];
-  for (const t of TREES) kinds[t[2]].list.push(t);
+  // 브이월드 건물 자리에 걸친 나무는 뺀다
+  for (const t of TREES) if (footprints.every(p => signedDist(t[0], t[1], p) > 1)) kinds[t[2]].list.push(t);
 
   const trunks = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.25, 0.35, 4, 6), new THREE.MeshLambertMaterial({ color: 0x5b4330 }), TREES.length);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
@@ -462,4 +472,20 @@ function win(g, x, y, w, h) {
   g.fillStyle = '#e4e6e8'; g.fillRect(x + w / 2 - 1.5, y, 3, h);
   g.fillStyle = '#f4f4f2'; g.fillRect(x - 5, y + h + 3, w + 10, 3);
   g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x - 5, y + h + 6, w + 10, 3);
+}
+
+/** 브이월드에만 있는 건물(마을 집, 창고 등): 측량 외곽선 + 층수로 만든 기본 건물 */
+function extraBuildings() {
+  const used = new Set(CAMPUS.buildings.map(b => b.vw));
+  const out = [];
+  VW_BUILDINGS.forEach(([floors, height, pts], i) => {
+    if (used.has(i)) return;
+    const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+    if (CAMPUS.buildings.some(b => signedDist(cx, cy, b.pts) < 1)) return; // 이미 측정한 건물과 겹치면 생략
+    let area = 0; for (let k = 0; k < pts.length; k++) { const [x1, y1] = pts[k], [x2, y2] = pts[(k + 1) % pts.length]; area += x1 * y2 - x2 * y1; }
+    const small = Math.abs(area) / 2 < 150, f = Math.max(1, floors);
+    out.push({ id: 'vw' + i, vw: i, pts, floors: f, h: height > 0 ? height : f * 3.2 + (small ? 1.8 : 0.6),
+      roofType: small ? 'gable' : 'flat', wall: '#ecebe6', roof: small ? '#5a5f66' : '#c9cccf', accent: '#6b7a8a' });
+  });
+  return out;
 }

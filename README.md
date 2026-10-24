@@ -21,3 +21,9 @@
 `main`에 푸시하면 1분 안에 GitHub Pages에 반영된다. 저장소 페이지에서 `.` 키를 누르면 브라우저 에디터가 열린다.
 
 로컬 미리보기(Windows): `powershell -File tools/serve.ps1` → http://localhost:8770
+
+## 데이터 출처
+
+- 항공사진·건물 외곽선·층수: [브이월드](https://www.vworld.kr) (국토교통부, 공공데이터) — 항공사진은 실행 중 브이월드 API에서 받아온다
+- 고도: AWS Terrain Tiles (SRTM)
+- 텍스처: ambientCG (CC0)

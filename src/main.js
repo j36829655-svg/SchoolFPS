@@ -3,7 +3,9 @@ import { CAMPUS } from './data/campus.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { buildWorld } from './world.js';
-import { loadTextures } from './textures.js';
+import { loadTextures, tiled } from './textures.js';
+import { applyAlignment } from './align.js';
+import { loadOrtho, applyOrtho } from './ortho.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
 const SPAWN = { x: -40, y: -150, yaw: 0.6 }; // 주차장 근처, 북동쪽(학교 중심)을 바라봄
@@ -45,8 +47,19 @@ const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 30
 camera.rotation.order = 'YXZ';
 
 await loadTextures();
+applyAlignment(); // 측정 좌표 → 브이월드 실제 좌표
 const physics = new Physics(CAMPUS.bounds);
 const terrain = buildWorld(scene, physics);
+
+// 항공사진은 게임을 막지 않고 뒤에서 받아 입힌다
+let orthoMsg = '항공사진 불러오는 중';
+loadOrtho([terrain.x0, terrain.y0, terrain.x0 + (terrain.nx - 1) * 2.5, terrain.y0 + (terrain.ny - 1) * 2.5], (d, n) => { orthoMsg = `항공사진 ${d}/${n}`; })
+  .then(o => {
+    if (!o) { orthoMsg = '항공사진을 불러오지 못했어요 (기본 잔디 사용)'; return; }
+    applyOrtho(terrain.mesh, o, tiled('grass', 2.5));
+    scene.traverse(m => { if (m.userData.orthoHide) m.visible = false; });
+    orthoMsg = '항공사진·건물: 브이월드(국토교통부)';
+  });
 // 건물·나무·소품은 그림자를 드리우고, 땅과 바닥은 그림자를 받는다
 scene.traverse(o => {
   if (!o.isMesh) return;
@@ -140,7 +153,7 @@ function tick() {
 
   frames++; fpsT += dt;
   if (fpsT > 0.5) { fps = Math.round(frames / fpsT); frames = 0; fpsT = 0; }
-  hud.textContent = `${fps} FPS  ${flying ? '비행 모드' : '걷기 모드'}\nx ${body.pos.x.toFixed(1)}  y ${body.pos.y.toFixed(1)}`;
+  hud.textContent = `${fps} FPS  ${flying ? '비행 모드' : '걷기 모드'}\nx ${body.pos.x.toFixed(1)}  y ${body.pos.y.toFixed(1)}\n${orthoMsg}`;
   requestAnimationFrame(tick);
 }
 tick();
