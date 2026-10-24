@@ -21,6 +21,8 @@
   #menu .status { min-height: 20px; font-size: 14px; color: #fde68a; margin-top: 8px; white-space: pre-line; }
   #menu small { display: block; margin-top: 12px; opacity: .6; line-height: 1.6; }
   #menu .hidden { display: none; }
+  #menu #diff button { padding: 8px; font-size: 14px; }
+  #menu #diff button.sel { background: #e11d48; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
 </head>
@@ -29,19 +31,23 @@
 <div id="cross"></div>
 <div id="start"><div id="menu">
   <h1>Campus FPS</h1>
-  <p>실제 캠퍼스를 재현한 3D 맵에서 좀비를 막아내거나 친구들과 페인트볼 대전을 해요.</p>
+  <p>실제 캠퍼스를 재현한 3D 맵에서 라운드마다 몰려오는 괴물을 막아내거나 친구들과 대전을 해요.</p>
   <div id="loading" class="status">맵 불러오는 중…</div>
   <div id="main" class="hidden">
+    <div id="pauseNote" class="status" style="margin:0 0 6px"></div>
     <button id="resume" class="primary hidden">계속하기</button>
+    <div class="row"><button id="restart" class="hidden">다시 시작</button><button id="leave" class="hidden">메뉴로 나가기</button></div>
     <label style="font-size:13px;opacity:.8">이름<input id="name" maxlength="12" placeholder="플레이어"></label>
-    <button id="solo" class="primary">좀비 모드 (혼자)</button>
-    <div class="row"><button id="hostZombie">방 만들기: 협동 좀비</button><button id="hostPvp">방 만들기: 페인트볼 대전</button></div>
+    <div style="font-size:13px;opacity:.8">난이도</div>
+    <div class="row" id="diff"><button data-d="easy">쉬움</button><button data-d="normal">보통</button><button data-d="hard">어려움</button></div>
+    <div id="best" style="font-size:12px;opacity:.7;min-height:15px"></div>
+    <button id="solo" class="primary">무한 생존 (혼자)</button>
+    <div class="row"><button id="hostZombie">방 만들기: 협동 생존</button><button id="hostPvp">방 만들기: 대전</button></div>
     <div class="row"><input id="code" maxlength="4" placeholder="방 코드" style="margin:5px 0"><button id="join">참가</button></div>
     <button id="explore">자유 탐색 (맵 둘러보기)</button>
-    <button id="leave" class="hidden">메뉴로 나가기</button>
     <div id="status" class="status"></div>
   </div>
-  <small>WASD 이동 · Shift 달리기 · Space 점프 · 마우스 왼쪽 쏘기 · R 재장전 · Tab 점수판 · Esc 메뉴<br>자유 탐색에서 F: 비행 (바라보는 방향으로 날기 · Space/E 위 · C/Q 아래)</small>
+  <small>WASD 이동 · Shift 달리기 · Space 점프 · 왼쪽 클릭 쏘기 · 오른쪽 클릭 조준 · R 재장전<br>숫자 1~0, -, = 무기 선택 · 휠/Q 무기 바꾸기 · Tab 점수판 · Esc 일시 정지<br>자유 탐색에서 F: 비행 (바라보는 방향으로 날기 · Space/E 위 · C/Q 아래)</small>
 </div></div>
 <script type="module" src="src/main.js"></script>
 </body>

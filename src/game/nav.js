@@ -1,9 +1,9 @@
 // 좀비 길찾기: 캠퍼스를 2m 격자로 나누고, 플레이어들로부터의 거리장(BFS)을 만들어 거리가 줄어드는 쪽으로 걷게 한다.
-// 건물·비닐하우스·연못은 막힌 칸.
+// 건물·비닐하우스·연못, 그리고 물리 충돌체(나무·담·울타리) 중심이 닿는 칸은 막힌 칸.
 const CELL = 2;
 
 export class NavGrid {
-  constructor(bounds, solids, signedDist) {
+  constructor(bounds, solids, signedDist, physics = null) {
     const [x0, y0, x1, y1] = bounds;
     this.x0 = x0; this.y0 = y0;
     this.nx = Math.ceil((x1 - x0) / CELL); this.ny = Math.ceil((y1 - y0) / CELL);
@@ -13,6 +13,7 @@ export class NavGrid {
     for (let j = 0; j < this.ny; j++) for (let i = 0; i < this.nx; i++) {
       const x = x0 + (i + 0.5) * CELL, y = y0 + (j + 0.5) * CELL;
       for (const s of boxes) if (x > s.a - 1 && x < s.c + 1 && y > s.b - 1 && y < s.d + 1 && signedDist(x, y, s.p) < 0.6) { this.blocked[j * this.nx + i] = 1; break; }
+      if (physics && !this.blocked[j * this.nx + i]) { const p = { x, y }; physics.resolve(p, 0.5); if (Math.hypot(p.x - x, p.y - y) > 0.05) this.blocked[j * this.nx + i] = 1; }
     }
   }
 
