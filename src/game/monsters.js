@@ -118,12 +118,14 @@ export function think(m, dt, W) {
   if (m.state === 'dead') { if (m.kind === 'bat') { m.vz -= 12 * dt; m.z = Math.max(W.groundAt(m.x, m.y) + 0.2, m.z + m.vz * dt); } return; }
   let t = null, td = Infinity;
   for (const p of W.players) { const dd = Math.hypot(p.x - m.x, p.y - m.y); if (dd < td) { td = dd; t = p; } }
-  const ground = W.groundAt(m.x, m.y), flyer = m.kind === 'bat';
+  const flyer = m.kind === 'bat', ground = W.groundAt(m.x, m.y, flyer ? undefined : m.z);
   if (!t) { m.mv = 0; if (flyer) m.z += (ground + d.alt - m.z) * Math.min(1, dt); return; }
   const los = td < 70 && !W.physics.blocked(m.x, m.y, t.x, t.y);
   if ((m.voiceT -= dt) <= 0) { m.voiceT = 4 + Math.random() * 7; if (m.kind === 'zombie') W.sound('groan', m.x, m.y); }
   const toT = () => [(t.x - m.x) / (td || 1), (t.y - m.y) / (td || 1)];
-  const path = () => (los && td < 14) ? toT() : (W.nav.dirAt(m.x, m.y) ?? toT());
+  const toward = ([gx, gy]) => { const l = Math.hypot(gx - m.x, gy - m.y) || 1; return [(gx - m.x) / l, (gy - m.y) / l]; };
+  // 목표가 같은 건물 위층이면 계단으로, 아니면 보이면 곧장·안 보이면 길찾기
+  const path = () => { const sg = !flyer && W.stairGoal?.(m.x, m.y, m.z, t.x, t.y, t.z); return sg ? toward(sg) : (los && td < 14) ? toT() : (W.nav.dirAt(m.x, m.y) ?? toT()); };
   let mx = 0, my = 0, sp = 0;
 
   switch (m.state) {
@@ -184,7 +186,7 @@ export function think(m, dt, W) {
       W.physics.resolve(pos, d.radius);
       const bumped = Math.hypot(pos.x - nx, pos.y - ny) > 0.01;
       m.x = pos.x; m.y = pos.y;
-      const p = Math.min(1, m.st / m.atkLen), g = W.groundAt(m.x, m.y);
+      const p = Math.min(1, m.st / m.atkLen), g = W.groundAt(m.x, m.y, flyer ? undefined : m.leapZ);
       if (flyer) m.z = Math.max(g + 0.7, m.z + m.vz * dt);
       else m.z = g + 4 * 1.1 * p * (1 - p);
       if (!m.hitDone) for (const pl of W.players) {
@@ -229,7 +231,7 @@ export function think(m, dt, W) {
     } else if (!m.detourT || m.detourT <= 0) m.stuckN = 0;
     m.chk = [m.x, m.y];
   }
-  const g = W.groundAt(m.x, m.y);
+  const g = W.groundAt(m.x, m.y, flyer ? undefined : m.z);
   if (flyer) { const goal = g + (m.state === 'recover' ? d.alt + 1 : d.alt + Math.sin(m.orb * 2) * 1.2); m.z += (goal - m.z) * Math.min(1, dt * 1.8); }
   else m.z = g;
   // 바라보는 방향 (yaw 0 = 북쪽)

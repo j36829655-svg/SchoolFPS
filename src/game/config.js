@@ -12,27 +12,28 @@ export const WEAPONS = [
   { id: 'deagle', name: 'Desert Eagle', kind: '권총', mode: 'semi', dmg: 65, rpm: 200, mag: 7, reserve: 35, reload: 1.9, spread: 0.02, recoil: 0.05, range: 55, falloff: 0.5, head: 2, ads: 60, flash: 0.2,
     m: { pistol: true, L: 0.26, H: 0.04, slideH: 0.036, col: 0x9ea3a8, col2: 0x2a2a2a, sight: 'iron' }, snd: [2300, 0.22, 0.85, 90] },
   { id: 'mp5', name: 'MP5', kind: '기관단총', mode: 'auto', dmg: 22, rpm: 800, mag: 30, reserve: 150, reload: 2.0, spread: 0.022, recoil: 0.008, range: 40, falloff: 0.45, head: 2, ads: 58, flash: 0.1,
-    m: { L: 0.24, H: 0.058, rear: 0.07, barrel: [0.07, 0.011], hg: [0.13, 0.05, 'round'], mag: ['curved', 0.2], stock: 'fold', sight: 'drum', col: 0x1f2124 }, snd: [2800, 0.08, 0.45, 140] },
+    m: { L: 0.24, H: 0.058, rear: 0.07, barrel: [0.07, 0.011], hg: [0.13, 0.05, 'round'], mag: ['curved', 0.2], stock: 'fold', sight: 'red', col: 0x1f2124 }, snd: [2800, 0.08, 0.45, 140] },
   { id: 'ump45', name: 'UMP45', kind: '기관단총', mode: 'auto', dmg: 30, rpm: 600, mag: 25, reserve: 125, reload: 2.2, spread: 0.024, recoil: 0.012, range: 45, falloff: 0.45, head: 2, ads: 56, flash: 0.12,
     m: { L: 0.3, H: 0.072, rear: 0.08, barrel: [0.05, 0.012], hg: [0.08, 0.06, 'box'], mag: ['straight', 0.18], stock: 'skeleton', sight: 'red', col: 0x2b2d2f }, snd: [2400, 0.1, 0.55, 120] },
   { id: 'p90', name: 'P90', kind: '기관단총', mode: 'auto', dmg: 20, rpm: 900, mag: 50, reserve: 200, reload: 2.6, spread: 0.024, recoil: 0.007, range: 40, falloff: 0.45, head: 2, ads: 56, flash: 0.1,
-    m: { bullpup: true, L: 0.48, H: 0.085, rear: 0.2, barrel: [0.06, 0.011], mag: ['top', 0.3], sight: 'p90', col: 0x3a3c36 }, snd: [3000, 0.07, 0.42, 160] },
+    m: { bullpup: true, L: 0.48, H: 0.085, rear: 0.2, barrel: [0.06, 0.011], mag: ['top', 0.3], sight: 'red', col: 0x3a3c36 }, snd: [3000, 0.07, 0.42, 160] },
   { id: 'ak47', name: 'AK-47', kind: '돌격소총', mode: 'auto', dmg: 35, rpm: 600, mag: 30, reserve: 120, reload: 2.5, spread: 0.03, recoil: 0.022, range: 80, falloff: 0.55, head: 2, ads: 52, flash: 0.18,
-    m: { L: 0.3, H: 0.06, rear: 0.09, barrel: [0.3, 0.011], hg: [0.2, 0.052, 'wood'], mag: ['curved', 0.25], stock: 'wood', sight: 'iron', col: 0x2a2b2d, col2: 0x7a4a28 }, snd: [1900, 0.16, 0.8, 90] },
+    m: { L: 0.3, H: 0.06, rear: 0.09, barrel: [0.3, 0.011], hg: [0.2, 0.052, 'wood'], mag: ['curved', 0.25], stock: 'wood', sight: 'red', col: 0x2a2b2d, col2: 0x7a4a28 }, snd: [1900, 0.16, 0.8, 90] },
   { id: 'm4a1', name: 'M4A1', kind: '돌격소총', mode: 'auto', dmg: 28, rpm: 750, mag: 30, reserve: 150, reload: 2.2, spread: 0.02, recoil: 0.013, range: 85, falloff: 0.55, head: 2, ads: 50, flash: 0.15,
     m: { L: 0.25, H: 0.062, rear: 0.08, barrel: [0.26, 0.01], hg: [0.2, 0.056, 'rail'], mag: ['straight', 0.2], stock: 'tube', sight: 'red', col: 0x1c1d1f }, snd: [2300, 0.13, 0.7, 110] },
   { id: 'scarh', name: 'SCAR-H', kind: '전투소총', mode: 'auto', dmg: 45, rpm: 550, mag: 20, reserve: 100, reload: 2.6, spread: 0.024, recoil: 0.028, range: 100, falloff: 0.6, head: 2, ads: 48, flash: 0.2,
     m: { L: 0.36, H: 0.07, rear: 0.09, barrel: [0.22, 0.012], hg: [0.16, 0.06, 'rail'], mag: ['straight', 0.15], stock: 'solid', sight: 'red', col: 0xb39a6c, col2: 0x2a2a2a }, snd: [1700, 0.2, 0.9, 80] },
   { id: 'famas', name: 'FAMAS', kind: '돌격소총', mode: 'burst', burst: 3, burstDelay: 0.32, dmg: 27, rpm: 900, mag: 25, reserve: 125, reload: 2.4, spread: 0.016, recoil: 0.011, range: 80, falloff: 0.55, head: 2, ads: 50, flash: 0.14,
-    m: { bullpup: true, L: 0.5, H: 0.075, rear: 0.24, barrel: [0.14, 0.01], mag: ['bullpup', 0.17], sight: 'handle', col: 0x2b2e2b }, snd: [2500, 0.12, 0.65, 110] },
+    m: { bullpup: true, L: 0.5, H: 0.075, rear: 0.24, barrel: [0.14, 0.01], mag: ['bullpup', 0.17], sight: 'red', col: 0x2b2e2b }, snd: [2500, 0.12, 0.65, 110] },
   { id: 'r870', name: 'Remington 870', kind: '산탄총', mode: 'pump', pellets: 8, dmg: 15, rpm: 60, mag: 8, reserve: 32, reload: 0.5, shell: true, spread: 0.075, adsSpread: 0.055, recoil: 0.06, range: 14, falloff: 0.15, head: 1.5, ads: 60, flash: 0.28,
-    m: { L: 0.2, H: 0.06, rear: 0.07, barrel: [0.5, 0.011], mag: ['tube', 0.42], pump: true, stock: 'wood', sight: 'bead', col: 0x1d1d1e, col2: 0x6b3f22 }, snd: [1300, 0.35, 1, 65] },
+    m: { L: 0.2, H: 0.06, rear: 0.07, barrel: [0.5, 0.011], mag: ['tube', 0.42], pump: true, stock: 'wood', sight: 'red', col: 0x1d1d1e, col2: 0x6b3f22 }, snd: [1300, 0.35, 1, 65] },
   { id: 'svd', name: 'SVD', kind: '저격소총', mode: 'semi', dmg: 100, rpm: 120, mag: 10, reserve: 40, reload: 2.8, spread: 0.035, adsSpread: 0.0004, recoil: 0.055, range: 220, falloff: 0.7, head: 2.5, ads: 22, scope: true, flash: 0.2,
     m: { L: 0.28, H: 0.06, rear: 0.09, barrel: [0.5, 0.009], hg: [0.2, 0.05, 'wood'], mag: ['straight', 0.12], stock: 'thumb', sight: 'scope', col: 0x26282a, col2: 0x7a4a28 }, snd: [1600, 0.45, 1, 70] },
   { id: 'm249', name: 'M249', kind: '경기관총', mode: 'auto', dmg: 25, rpm: 750, mag: 100, reserve: 200, reload: 4.5, spread: 0.034, recoil: 0.011, range: 75, falloff: 0.55, head: 2, ads: 55, flash: 0.18, moveMul: 0.85,
-    m: { L: 0.34, H: 0.09, rear: 0.09, barrel: [0.38, 0.014], hg: [0.16, 0.07, 'shield'], mag: ['box', 0.12], stock: 'solid', sight: 'handle', bipod: true, col: 0x262729 }, snd: [2000, 0.13, 0.75, 95] },
+    m: { L: 0.34, H: 0.09, rear: 0.09, barrel: [0.38, 0.014], hg: [0.16, 0.07, 'shield'], mag: ['box', 0.12], stock: 'solid', sight: 'red', bipod: true, col: 0x262729 }, snd: [2000, 0.13, 0.75, 95] },
 ];
 export const WEAPON = Object.fromEntries(WEAPONS.map((w, i) => [w.id, { ...w, slot: i }]));
+export const LOADOUT = 2; // 시작할 때 고르는 총 수
 export const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'];
 
 /* 몬스터

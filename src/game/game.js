@@ -13,7 +13,7 @@ const COLORS = ['#ff4fa3', '#3b82f6', '#f59e0b', '#10b981', '#a855f7', '#ef4444'
 const TICK = 1 / 15;
 const PVP_HITS = [[1.72, 0.22, true], [1.18, 0.4], [0.55, 0.32]];
 const SURVIVE_AT = [20, -70]; // 생존 모드 시작·부활 지점 (캠퍼스 가운데)
-const ALL_GUNS = WEAPONS.map(w => w.id);
+const UNLOCK_ORDER = [...ROUND.startGuns, ...ROUND.unlock]; // 고르지 않은 총이 이 순서로 하나씩 열린다
 const PICK_KINDS = ['ammo', 'health'];
 const BLOOD = { zombie: 0x6b1a10, spider: 0x7a8a20, giant: 0x5a1010, bat: 0x6b1a10 };
 
@@ -23,15 +23,16 @@ export class Game {
     this.ctx = ctx; this.hud = hud;
     this.arsenal = new Arsenal(ctx.camera, ctx.scene); this.arsenal.visible = false;
     this.nav = new NavGrid(ctx.bounds, ctx.solids, ctx.signedDist, ctx.physics);
+    for (const [x, y] of ctx.doors ?? []) this.nav.open(x, y); // 건물 출입문은 지나갈 수 있게
     this.minimap = new Minimap(hud.mapEl, ctx.ortho, ctx.campus);
     this.ray = new THREE.Raycaster();
     this.active = false;
   }
 
   /** mode: 'zombie' | 'pvp', net: Net 또는 null(혼자), diff: 'easy' | 'normal' | 'hard' */
-  start({ mode, net = null, name = '나', diff = 'normal' }) {
+  start({ mode, net = null, name = '나', diff = 'normal', guns = ROUND.startGuns }) {
     this.stop();
-    this.opts = { mode, name, diff };
+    this.opts = { mode, name, diff, guns };
     this.mode = mode; this.net = net; this.diffKey = diff; this.diff = DIFFICULTY[diff];
     this.isHost = !net || net.isHost;
     this.myId = net ? net.id : 'host';
@@ -39,7 +40,7 @@ export class Game {
     this.nextId = 1; this.round = 0; this.cleared = 0; this.phase = 'prep'; this.phaseT = ROUND.prep; this.queue = []; this.spawnCd = 0;
     this.msg = ''; this.msgT = 0; this.over = false; this.sendT = 0; this.navT = 0; this.now = 0; this.survive = 0; this.saved = null; this.mapT = 0;
     this.me = this.addPlayer(this.myId, name, COLORS[0]);
-    this.arsenal.reset(mode === 'pvp' ? ALL_GUNS : ROUND.startGuns);
+    this.guns = guns; this.arsenal.reset(guns);
     this.arsenal.visible = true;
     this.active = true;
     this.hud.show(true); this.hud.results(null);
@@ -129,7 +130,7 @@ export class Game {
     this.lastStatus = status;
     hud.weapon({ name: d.name, kind: d.kind, ammo: c.ammo, reserve: c.reserve, status, owned: A.owned.map(id => WEAPON[id].slot), cur: d.slot });
     const fov = this.ctx.camera.fov * Math.PI / 180, gap = Math.tan(A.spread(input.moving, input.sprint)) / Math.tan(fov / 2) * innerHeight / 2;
-    hud.cross(gap, this.canMove(), A.scoped);
+    hud.cross(gap, this.canMove(), A.scoped, A.sighted && !A.scoped);
     hud.stats(this.zombieMode ? `킬 ${me.kills}<br>점수 ${me.score.toLocaleString()}` : `킬 ${me.kills} · 데스 ${me.deaths}`);
     hud.board([...this.players.values()].sort((a, b) => b.score - a.score || b.kills - a.kills), input.board, this.zombieMode);
     // 위쪽: 라운드·남은 적 / 대전 점수
@@ -329,7 +330,7 @@ export class Game {
 
     this.navT -= dt;
     if (this.navT <= 0) { this.nav.update(alive.map(p => [p.x, p.y])); this.navT = 0.5; }
-    const W = { players: alive, monsters: [...this.monsters.values()], nav: this.nav, physics: this.ctx.physics, groundAt: this.ctx.groundAt,
+    const W = { players: alive, monsters: [...this.monsters.values()], nav: this.nav, physics: this.ctx.physics, groundAt: this.ctx.groundAt, stairGoal: this.ctx.stairGoal,
       hurt: (p, dmg, m) => this.damage('p' + p.id, dmg, null, false, m), sound: (k, x, y) => this.sound(k, x, y),
       relocate: m => { const s = this.nav.randomSpot((x, y) => alive.every(p => Math.hypot(p.x - x, p.y - y) > 35) && alive.some(p => Math.hypot(p.x - x, p.y - y) < 80)); if (s) { m.x = s[0]; m.y = s[1]; } } };
     for (const m of W.monsters) {
@@ -381,7 +382,7 @@ export class Game {
   /** 깬 라운드 수만큼 새 총을 준다 (방장·참가자 모두 같은 규칙) */
   syncUnlocks() {
     if (!this.zombieMode) return;
-    for (const id of ROUND.unlock.slice(0, this.cleared)) if (this.arsenal.give(id)) {
+    for (const id of UNLOCK_ORDER.filter(id => !this.guns.includes(id)).slice(0, this.cleared)) if (this.arsenal.give(id)) {
       const w = WEAPON[id]; this.hud.note(`새 무기: ${w.name}  [${KEY_LABELS[w.slot]}]`, 3000); this.hud.feed(`새 무기 ${w.name} (${KEY_LABELS[w.slot]})`);
     }
   }
@@ -424,9 +425,9 @@ export class Game {
 
   applySnap(m) {
     const wasOver = this.over;
-    if (m.mode !== this.mode) { this.mode = m.mode; this.arsenal.reset(m.mode === 'pvp' ? ALL_GUNS : ROUND.startGuns); }
+    if (m.mode !== this.mode) this.mode = m.mode;
     if (m.diff !== this.diffKey) { this.diffKey = m.diff; this.diff = DIFFICULTY[m.diff]; }
-    if (wasOver && !m.over && this.zombieMode) { this.arsenal.reset(ROUND.startGuns); this.saved = null; this.cleared = 0; } // 방장이 다시 시작
+    if (wasOver && !m.over && this.zombieMode) { this.arsenal.reset(this.guns); this.saved = null; this.cleared = 0; } // 방장이 다시 시작
     if (m.round !== this.round && m.phase === 'round') sfx('round');
     Object.assign(this, { round: m.round, phase: m.phase, phaseT: m.phaseT, left: m.left, msg: m.msg, over: m.over, survive: m.survive });
     if (m.cleared !== this.cleared) { if (m.cleared > this.cleared) sfx('clear'); this.cleared = m.cleared; this.syncUnlocks(); }

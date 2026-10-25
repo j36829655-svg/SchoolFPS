@@ -83,7 +83,9 @@ export class Body {
     this.vx += clampDelta(tx - this.vx, accel * dt);
     this.vy += clampDelta(ty - this.vy, accel * dt);
 
-    if (jump && this.onGround) { this.vz = 6.2; this.onGround = false; }
+    // jump = 이번 프레임에 Space를 눌렀는지. 땅에서 한 번, 공중에서 한 번 더 (2단 점프)
+    if (this.onGround) this.jumps = 0;
+    if (jump && (this.onGround || this.jumps < 2)) { this.vz = this.onGround ? 6.2 : 5.6; this.jumps = (this.onGround ? 0 : Math.max(1, this.jumps)) + 1; this.onGround = false; }
     this.vz -= 20 * dt;
 
     const wasGround = this.onGround;
@@ -97,7 +99,10 @@ export class Body {
     if (dt > 0) { this.vx = (this.pos.x - bx) / dt + this.vx; this.vy = (this.pos.y - by) / dt + this.vy; }
 
     // 땅에 닿기. 내리막에서는 0.6m 이내면 땅에 붙여 통통 튀지 않게 한다
-    const gz = this.ground(this.pos.x, this.pos.y);
+    const gz = this.ground(this.pos.x, this.pos.y, this.z);
+    // 건물 안: 위층 바닥에 머리가 닿으면 더 못 올라간다
+    const cz = this.ceil ? this.ceil(this.pos.x, this.pos.y, this.z) : Infinity;
+    if (this.vz > 0 && this.z + 1.8 > cz) { this.vz = 0; this.z = Math.max(gz, cz - 1.8); }
     if (this.z <= gz || (wasGround && this.vz <= 0 && this.z - gz < 0.6)) { this.z = gz; this.vz = 0; this.onGround = true; }
     else this.onGround = false;
   }

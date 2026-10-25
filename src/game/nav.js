@@ -22,6 +22,7 @@ export class NavGrid {
     return i < 0 || j < 0 || i >= this.nx || j >= this.ny ? -1 : j * this.nx + i;
   }
   center(k) { return [this.x0 + (k % this.nx + 0.5) * CELL, this.y0 + (Math.floor(k / this.nx) + 0.5) * CELL]; }
+  open(x, y) { const k = this.idx(x, y); if (k >= 0) this.blocked[k] = 0; }
   walkable(x, y) { const k = this.idx(x, y); return k >= 0 && !this.blocked[k]; }
 
   /** targets: [[x, y], ...] 에서 시작하는 BFS 거리장 (최대 maxSteps 칸) */

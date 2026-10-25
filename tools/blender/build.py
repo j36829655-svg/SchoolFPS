@@ -162,6 +162,8 @@ def window(m, A, t, n, h, s, glass_role='glass', frame_role='frame'):
     m.face([Pw(u0, v1, 0), Pw(u0, v1, d), Pw(u1, v1, d), Pw(u1, v1, 0)], 'trim')
     m.face([Pw(u0, v0, 0), Pw(u1, v0, 0), Pw(u1, v0, d), Pw(u0, v0, d)], 'trim')
     w, hh = u1 - u0, v1 - v0
+    if kind == 'open':  # 출입문: 뚫린 채로 둔다 (드나들 수 있게)
+        return
     if kind == 'slat':  # 가로 루버 패널: 어두운 뒷면 + 0.18m 간격 가로 날개
         m.face([Pw(u0, v0, d), Pw(u1, v0, d), Pw(u1, v1, d), Pw(u0, v1, d)], 'frame')
         k = int(hh / 0.18)
@@ -209,6 +211,10 @@ def build(spec):
     m = Mesh(sid)
     o = spec['obb']
     end_len = o['L'] * 0.7
+    I = spec.get('interior')
+    inner = offset_poly(pts, I['t']) if I else None
+    if I:
+        interior(m, spec, I, inner, o)
     edges = [(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
     longest = max(range(len(edges)), key=lambda i: (Vector(edges[i][1]) - Vector(edges[i][0])).length)
 
@@ -224,6 +230,17 @@ def build(spec):
         st = spec['endStyle'] if (spec['endStyle'] and is_end) else style
         s = STYLE.get(st, S)
         holes = openings_for(st, L, ground, floors, fh, win_top)
+        if I:  # 들어갈 수 있는 건물: 창 구멍이 벽 두께만큼 뚫리고, 정해진 자리에 열린 출입문
+            holes = [(*hh[:4], hh[4] if len(hh) > 4 else 'glass', I['t']) for hh in holes]
+            if i == I['door']['edge']:
+                du0, du1 = I['door']['u0'], I['door']['u1']
+                holes = [hh for hh in holes if not (hh[2] < ground + 2.6 and hh[0] < du1 + 0.2 and hh[1] > du0 - 0.2)]
+                holes.append((du0, du1, ground, ground + I['door']['h'], 'open', I['t']))
+            wall_with_holes(m, A, t, n, L, base, top, holes, s['wall'])
+            for hh in holes:
+                window(m, A, t, n, hh, s)
+            lining(m, pts, inner, i, holes, ground, I['roofZ'])
+            continue
         # 출입문: 가장 긴 면 가운데 (유리벽·창고·콘크리트 제외)
         if i == longest and s['kind'] in ('band', 'punch') and L > 4:
             du0, du1 = L / 2 - 0.9, L / 2 + 0.9
@@ -287,6 +304,58 @@ def build(spec):
     uv_meters(me)
     ob = bpy.data.objects.new(sid, me)
     bpy.context.scene.collection.objects.link(ob)
+
+
+def lining(m, pts, inner, i, holes, z0, z1):
+    """안쪽 벽면: 바깥 벽 i 의 안쪽(두께만큼 들어간 선)에 같은 구멍을 뚫어 안을 향하게 붙인다"""
+    A, B, Ai, Bi = Vector(pts[i]), Vector(pts[(i + 1) % len(pts)]), Vector(inner[i]), Vector(inner[(i + 1) % len(inner)])
+    t = (B - A).normalized()
+    Li = (Bi - Ai).length
+    if Li < 0.05:
+        return
+    s = (Ai - A).dot(t)  # 바깥 벽 기준 위치 → 안쪽 벽 기준 위치
+    rev = [(Li - (h[1] - s), Li - (h[0] - s), h[2], h[3]) for h in holes]
+    wall_with_holes(m, tuple(Bi), (-t.x, -t.y), None, Li, z0, z1, [h for h in rev if h[1] > 0 and h[0] < Li], 'trim')
+
+
+def interior(m, spec, I, inner, o):
+    """층마다 바닥판(계단 구멍 포함)·천장, 1층 바닥, 맨 위 천장, 왕복 계단"""
+    from mathutils.geometry import tessellate_polygon
+    g, fh, F, s = spec['ground'], I['fh'], spec['floors'], I.get('stair')
+    P = lambda u, v, z: Vector((o['cx'] + u * o['ux'] - v * o['uy'], o['cy'] + u * o['uy'] + v * o['ux'], z))
+
+    def slab(z, hole, top_role, bottom_role):
+        outer = [Vector((x, y, z)) for x, y in inner]
+        loops = [outer] + ([[P(hole[0], hole[2], z), P(hole[1], hole[2], z), P(hole[1], hole[3], z), P(hole[0], hole[3], z)]] if hole else [])
+        verts = [v for lp in loops for v in lp]
+        for tri in tessellate_polygon(loops):
+            a, b, c = (verts[k] for k in tri)
+            up = (b - a).cross(c - a).z > 0
+            if top_role:
+                m.face([a, b, c] if up else [a, c, b], top_role)
+            if bottom_role:
+                d = Vector((0, 0, -0.15))
+                m.face([a + d, c + d, b + d] if up else [a + d, b + d, c + d], bottom_role)
+
+    slab(g + 0.03, None, 'wood', None)
+    for k in range(1, F):
+        hole = None
+        if s:  # 바로 아래 계단이 오르는 줄 위만 뚫는다
+            hole = (s['u0'], s['u1'], s['v0'], s['vm']) if (k - 1) % 2 == 0 else (s['u0'], s['u1'], s['vm'], s['v1'])
+        slab(g + k * fh, hole, 'wood', 'trim')
+    slab(I['roofZ'] - 0.02, None, None, 'trim')  # 맨 위 천장 (아래를 향함)
+    if not s:
+        return
+    t, n = (o['ux'], o['uy']), (-o['uy'], o['ux'])
+    for k in range(F - 1):
+        a = k % 2 == 0
+        v0, v1 = (s['v0'], s['vm']) if a else (s['vm'], s['v1'])
+        steps = max(4, round(fh / 0.17))
+        run = (s['u1'] - s['u0']) / steps
+        for j in range(steps):
+            u = s['u0'] + run * (j + 0.5) if a else s['u1'] - run * (j + 0.5)
+            hh = fh * (j + 1) / steps
+            m.box(P(u, (v0 + v1) / 2, g + k * fh + hh / 2), t, n, run + 0.01, hh, v1 - v0 - 0.05, 'concrete')
 
 
 def sloped_roof(m, o, eave_z, rise, spec):

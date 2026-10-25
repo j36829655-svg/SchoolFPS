@@ -77,6 +77,7 @@ export class Arsenal {
   set visible(v) { this.holder.visible = v; this._vis = v; }
   get visible() { return this._vis; }
   get scoped() { return this.def?.scope && this.aimT > 0.85; }
+  get sighted() { return this.aimT > 0.75; } // 조준 중: 총 모델을 치우고 조준경 화면을 보여 준다
 
   /** 가진 총을 ids 로 바꾸고 탄약을 채운다 */
   reset(ids, select = ids[ids.length - 1]) { this.guns.clear(); for (const id of ids) this.give(id); this.id = null; this.select(select); }
@@ -173,7 +174,7 @@ export class Arsenal {
     g.position.set(x + Math.sin(this.bob * 0.5) * bobA, y, z); g.rotation.set(rx, ry, rz);
     if (mdl.slide) mdl.slide.position.z = this.kick * 0.035;
     if (mdl.pump) mdl.pump.position.z = this.pumpT > 0 ? Math.sin(Math.min(1, (0.75 - this.pumpT) / 0.5) * Math.PI) * 0.08 : 0;
-    g.visible = !this.scoped;
+    g.visible = !this.sighted;
   }
 
   /** 조준 광선들 (산탄총은 펠릿 수만큼) */

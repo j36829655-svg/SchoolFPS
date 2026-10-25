@@ -37,6 +37,8 @@ const css = `
 #ghud .scope:before,#ghud .scope:after{content:'';position:absolute;background:#000}
 #ghud .scope:before{left:50%;top:0;bottom:0;width:1px}
 #ghud .scope:after{top:50%;left:0;right:0;height:1px}
+#ghud .dot{position:absolute;inset:0;display:none;background:radial-gradient(circle at center,rgba(120,160,190,.06) 0,rgba(120,160,190,.06) 21vmin,rgba(12,14,16,.75) 21.3vmin,rgba(12,14,16,.75) 23vmin,transparent 23.3vmin)}
+#ghud .dot:after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#ff2a2a;box-shadow:0 0 6px 1px #ff2a2a}
 #ghud .board{position:absolute;top:18%;left:50%;transform:translateX(-50%);min-width:380px;background:rgba(0,0,0,.7);padding:14px 18px;border-radius:8px;display:none;font-size:15px}
 #ghud .board td,#ghud .board th{padding:3px 12px}
 #ghud .results{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);min-width:340px;background:rgba(10,12,18,.88);border:1px solid rgba(255,255,255,.2);padding:22px 28px;border-radius:12px;display:none;text-align:center}
@@ -55,7 +57,7 @@ export class Hud {
   constructor() {
     const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
     this.el = document.createElement('div'); this.el.id = 'ghud';
-    this.el.innerHTML = `<div class="scope"></div><div class="hurt"></div><div class="cross"><i></i><i></i><i></i><i></i></div><div class="hit"></div>
+    this.el.innerHTML = `<div class="scope"></div><div class="dot"></div><div class="hurt"></div><div class="cross"><i></i><i></i><i></i><i></i></div><div class="hit"></div>
       <div class="dir"></div><div class="dir"></div><div class="dir"></div><div class="dir"></div>
       <div class="stats"></div><div class="top"></div><div class="boss"><span class="bname"></span><div class="bar"><div class="fill"></div></div></div>
       <div class="map"></div><div class="feed"></div><div class="center"></div><div class="note"></div>
@@ -104,10 +106,11 @@ export class Hud {
     d.style.transition = 'none'; d.style.opacity = 1; d.style.transform = `rotate(${angle}rad)`;
     requestAnimationFrame(() => { d.style.transition = 'opacity 1.2s'; d.style.opacity = 0; });
   }
-  /** gap: 조준점 벌어짐(px) */
-  cross(gap, visible, scoped) {
+  /** gap: 조준점 벌어짐(px), scoped: 저격 조준경, dot: 도트 조준경(조준 중) */
+  cross(gap, visible, scoped, dot) {
+    this.q(".dot").style.display = dot && visible ? "block" : "none";
     this.q('.scope').style.display = scoped ? 'block' : 'none';
-    const c = this.q('.cross'); c.style.display = visible && !scoped ? 'block' : 'none';
+    const c = this.q('.cross'); c.style.display = visible && !scoped && !dot ? 'block' : 'none';
     const g = Math.round(Math.min(80, 3 + gap)), key = 'g' + g;
     if (this.cache.cross === key) return; this.cache.cross = key;
     const [t, b, l, r] = c.children, L = 9;

@@ -7,6 +7,7 @@ import { OVERRIDES, PARTS } from './data/details.js';
 import { buildProps } from './props.js';
 import { IMG, tiled } from './textures.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { planInterior, wallColliders } from './interior.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -31,6 +32,9 @@ const v3 = (x, z, y) => new THREE.Vector3(x, z, -y);
 let MODELS = null;
 const WATER = () => CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts);
 export const BUILDING_SPECS = [];
+/** 길찾기에서 막힌 칸으로 쓸 다각형: 건물 벽(문 빼고)·부속 구조물·비닐하우스·연못 */
+export const SOLIDS = [];
+let OTHERS = []; // 모든 건물·구조물 외곽선 (출입문 위치를 고를 때 문 앞이 막혔는지 본다)
 
 /** ortho: 브이월드 항공사진(있으면 지형에 입히고 나무 위치를 사진에서 뽑는다) */
 export function buildWorld(scene, physics, ortho = null, models = null) {
@@ -52,8 +56,12 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
   const a = CAMPUS.amphitheater;
   const amphiPts = circlePts(a.center, a.r + 2, 16);
   levels.set(a, terrain.flatten(amphiPts, { margin: 0, blend: 5 }));
+  // 마지막으로 건물 둘레·안을 다시 자기 높이로 (이웃 터의 경사가 번지지 않게). 건물 밑 지형은 그리지 않는다(바닥판이 대신한다)
+  const sites = [...CAMPUS.buildings, ...extra];
+  for (const b of sites) terrain.flatten(b.pts, { margin: 2.5, blend: 0, target: levels.get(b) });
+  for (const b of sites) terrain.flatten(b.pts, { margin: 0, blend: 0, target: levels.get(b) });
 
-  scene.add(terrainMesh(terrain));
+  scene.add(terrainMesh(terrain, sites.map(b => b.pts)));
   ortho?.apply(terrain.mesh);
 
   // 2) 지면 구역
@@ -62,7 +70,7 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
     if (g.type === 'water') {
       const water = decal(g.pts, y + 1.3, new THREE.MeshLambertMaterial({ color: 0x3d6f86, transparent: true, opacity: 0.88 }));
       scene.add(water);
-      physics.addPolygon(g.pts);
+      physics.addPolygon(g.pts); SOLIDS.push(g.pts);
     } else {
       const lines = g.type === 'futsal' || g.type === 'court' || g.name === '대운동장';
       const surface = { dirt: ['dirt', 5, 0xffffff], asphalt: ['asphalt', 4, 0xffffff], farm: ['dirt', 3, 0xa88a6a] }[g.type];
@@ -76,22 +84,21 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
   for (const r of CAMPUS.roads) scene.add(road(r.pts, r.w, ROAD_COLORS[r.type] ?? 0x777777, terrain));
 
   // 3) 건물
+  OTHERS = [...CAMPUS.buildings, ...extra, ...PARTS, ...CAMPUS.greenhouses, ...CAMPUS.grounds.filter(g => g.type === 'water')].map(b => b.pts);
   for (const b of CAMPUS.buildings) {
-    scene.add(building(b, levels.get(b)));
-    physics.addPolygon(b.pts);
+    scene.add(building(b, levels.get(b), physics));
   }
   for (const g of CAMPUS.greenhouses) {
     scene.add(greenhouse(g, levels.get(g)));
-    physics.addPolygon(g.pts);
+    physics.addPolygon(g.pts); SOLIDS.push(g.pts);
   }
   scene.add(amphitheater(a, levels.get(a)));
 
   for (const p of PARTS) {
-    scene.add(building(p, levels.get(CAMPUS.buildings.find(b => b.id === p.parent))));
-    physics.addPolygon(p.pts);
+    scene.add(building(p, levels.get(CAMPUS.buildings.find(b => b.id === p.parent)), physics, false));
   }
 
-  for (const b of extra) { scene.add(building(b, levels.get(b))); physics.addPolygon(b.pts); }
+  for (const b of extra) scene.add(building(b, levels.get(b), physics));
 
   const footprints = [...CAMPUS.buildings, ...extra, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts);
   addTrees(scene, physics, terrain, footprints, ortho ? treesFromOrtho(ortho, terrain, footprints) : null);
@@ -101,7 +108,7 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
 
 // ───────────── 지형 ─────────────
 
-function terrainMesh(t) {
+function terrainMesh(t, holes = []) {
   const { nx, ny } = t, n = nx * ny;
   const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), uv = new Float32Array(n * 2);
   const c = new THREE.Color();
@@ -115,10 +122,21 @@ function terrainMesh(t) {
     c.setRGB(0.92 + noise + slope * 0.03, 0.95 + noise - slope * 0.02, 0.82 + noise, THREE.SRGBColorSpace);
     col.set([c.r, c.g, c.b], k * 3);
   }
+  // 건물 안 꼭짓점 표시 (외곽 사각형으로 먼저 거른다)
+  const U = new Uint8Array(n);
+  for (const p of holes) {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const [x, y] of p) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    for (let j = Math.max(0, Math.floor((y0 - t.y0) / 2.5)); j <= Math.min(ny - 1, Math.ceil((y1 - t.y0) / 2.5)); j++)
+      for (let i = Math.max(0, Math.floor((x0 - t.x0) / 2.5)); i <= Math.min(nx - 1, Math.ceil((x1 - t.x0) / 2.5)); i++)
+        if (signedDist(t.x0 + i * 2.5, t.y0 + j * 2.5, p) < 0) U[j * nx + i] = 1;
+  }
   const idx = [];
   for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
     const a = j * nx + i, b = a + 1, cc = a + nx, d = cc + 1;
-    idx.push(a, b, cc, b, d, cc);
+    // 세 꼭짓점이 모두 건물 안인 삼각형은 뺀다 (건물 바닥판이 덮고, 이웃 건물 높이가 번져 바닥을 뚫고 올라오지 않게)
+    const ua = U[a], ub = U[b], uc = U[cc], ud = U[d];
+    if (!(ua && ub && uc)) idx.push(a, b, cc);
+    if (!(ub && ud && uc)) idx.push(b, d, cc);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -178,14 +196,17 @@ function road(pts, w, color, terrain) {
 
 // ───────────── 건물 ─────────────
 
-function building(b, ground) {
-  return markSolid(buildingInner(b, ground));
+/** 건물 + 충돌체. inside: 들어갈 수 있게(벽만 막고 문은 비움). 부속 구조물(PARTS)은 통째로 막는다 */
+function building(b, ground, physics, inside = true) {
+  const g = markSolid(buildingInner(b, ground, inside)), I = g.userData.interior;
+  for (const p of I ? wallColliders(I) : [b.pts]) { physics.addPolygon(p); SOLIDS.push(p); }
+  return g;
 }
 
 /** 총알이 맞는 면으로 표시 (main.js 가 모아서 레이캐스트에 쓴다) */
 function markSolid(g) { g.traverse(o => { if (o.isMesh) o.userData.solid = true; }); return g; }
 
-function buildingInner(b, ground) {
+function buildingInner(b, ground, inside) {
   const group = new THREE.Group();
   const style = b.style ?? STYLE_BY_ID[b.id] ?? (b.roofType === 'gable' ? 'cottage' : 'grid');
   const sloped = b.roofType !== 'flat';
@@ -196,6 +217,9 @@ function buildingInner(b, ground) {
 
   BUILDING_SPECS.push({ id: b.id, pts: ccw(b.pts), ground, h: b.h, eave, rise, floors: Math.max(1, b.floors), style, endStyle: b.endStyle ?? null,
     roofType: b.roofType, wall: b.wall, roof: b.roof, accent: b.accent, endGlass: !!b.endGlass, canopy: !!b.canopy, obb: o });
+  const spec = BUILDING_SPECS[BUILDING_SPECS.length - 1];
+  const [bx0, by0, bx1, by1] = CAMPUS.bounds, inMap = b.pts.every(([x, y]) => x > bx0 && x < bx1 && y > by0 && y < by1); // 맵 밖 건물은 갈 수 없으니 막아 둔다
+  if (inside && inMap) group.userData.interior = spec.interior = planInterior(spec, OTHERS) ?? undefined;
 
   // Blender 모델이 있으면 그것을 쓰고, 지붕 위 설비(태양광·난간)만 덧붙인다
   group.userData.building = true;

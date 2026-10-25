@@ -10,7 +10,7 @@
   #hud { position: fixed; left: 12px; top: 10px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px #000; pointer-events: none; white-space: pre; opacity: .8; }
   #cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; pointer-events: none; }
   #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(10,14,20,.62); color: #fff; }
-  #menu { width: min(440px, 92vw); background: rgba(20,24,32,.88); border: 1px solid rgba(255,255,255,.15); border-radius: 12px; padding: 22px 24px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
+  #menu { max-height: 94vh; overflow-y: auto; box-sizing: border-box; width: min(440px, 92vw); background: rgba(20,24,32,.88); border: 1px solid rgba(255,255,255,.15); border-radius: 12px; padding: 22px 24px; box-shadow: 0 10px 40px rgba(0,0,0,.4); }
   #menu h1 { margin: 0 0 4px; font-size: 26px; }
   #menu p { margin: 4px 0 14px; opacity: .75; font-size: 13px; line-height: 1.5; }
   #menu input { width: 100%; box-sizing: border-box; padding: 9px 10px; margin: 4px 0 12px; border-radius: 6px; border: 1px solid #556; background: #11151c; color: #fff; font-size: 15px; }
@@ -24,8 +24,12 @@
   #menu #diff button { padding: 8px; font-size: 14px; }
   #menu #diff button.sel, #menu #lobbyMode button.sel, #menu #lobbyDiff button.sel { background: #e11d48; }
   #menu #lobbyMode button, #menu #lobbyDiff button { padding: 8px; font-size: 14px; }
+  #loadout { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 8px; }
+  #menu #loadout button { margin: 0; padding: 6px 2px; font-size: 12px; font-weight: 600; }
+  #menu #loadout button.sel { background: #e11d48; }
+  #menu #loadout small { display: block; margin: 0; font-size: 10px; opacity: .7; }
 </style>
-<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/", "./src/align.js": "./src/align.js?v=520d8d79", "./src/data/campus.js": "./src/data/campus.js?v=47fee65e", "./src/data/details.js": "./src/data/details.js?v=34513224", "./src/data/osm_roads.js": "./src/data/osm_roads.js?v=fad7397c", "./src/data/terrain.js": "./src/data/terrain.js?v=4f76e762", "./src/data/trees.js": "./src/data/trees.js?v=288e87eb", "./src/data/vworld_buildings.js": "./src/data/vworld_buildings.js?v=c0313959", "./src/data/vworld_roads.js": "./src/data/vworld_roads.js?v=40809181", "./src/game/avatar.js": "./src/game/avatar.js?v=b273b7d3", "./src/game/config.js": "./src/game/config.js?v=53ecc214", "./src/game/game.js": "./src/game/game.js?v=7da7cb4e", "./src/game/gunmodel.js": "./src/game/gunmodel.js?v=7b62b8bb", "./src/game/hud.js": "./src/game/hud.js?v=baf14c5d", "./src/game/minimap.js": "./src/game/minimap.js?v=1ba69a93", "./src/game/monsters.js": "./src/game/monsters.js?v=daffa3a0", "./src/game/nav.js": "./src/game/nav.js?v=c7e289de", "./src/game/net.js": "./src/game/net.js?v=18940c9f", "./src/game/weapon.js": "./src/game/weapon.js?v=f44e7900", "./src/interior.js": "./src/interior.js?v=7fd134bd", "./src/main.js": "./src/main.js?v=ea6fb675", "./src/models.js": "./src/models.js?v=d3f31b95", "./src/ortho.js": "./src/ortho.js?v=ff5b4dea", "./src/physics.js": "./src/physics.js?v=0140912b", "./src/props.js": "./src/props.js?v=f3e432a7", "./src/terrain.js": "./src/terrain.js?v=68521c48", "./src/textures.js": "./src/textures.js?v=4920f559", "./src/world.js": "./src/world.js?v=e55bdda6" } }</script>
 </head>
 <body>
 <div id="hud"></div>
@@ -42,6 +46,8 @@
     <div style="font-size:13px;opacity:.8">난이도</div>
     <div class="row" id="diff"><button data-d="easy">쉬움</button><button data-d="normal">보통</button><button data-d="hard">어려움</button></div>
     <div id="best" style="font-size:12px;opacity:.7;min-height:15px"></div>
+    <div style="font-size:13px;opacity:.8">시작 총 2자루 고르기</div>
+    <div id="loadout"></div>
     <button id="solo" class="primary">무한 생존 (혼자)</button>
     <div class="row"><button id="host">방 만들기 (멀티)</button><input id="code" maxlength="4" placeholder="방 코드" style="margin:5px 0"><button id="join">참가</button></div>
     <button id="explore">자유 탐색 (맵 둘러보기)</button>
@@ -64,6 +70,6 @@
   </div>
   <small>WASD 이동 · Shift 달리기 · Space 점프 · 왼쪽 클릭 쏘기 · 오른쪽 클릭 조준 · R 재장전<br>숫자 1~0, -, = 무기 선택 · 휠/Q 무기 바꾸기 · Tab 점수판 · Esc 일시 정지<br>자유 탐색에서 F: 비행 (바라보는 방향으로 날기 · Space/E 위 · C/Q 아래)</small>
 </div></div>
-<script type="module" src="src/main.js"></script>
+<script type="module" src="src/main.js?v=ea6fb675"></script>
 </body>
 </html>

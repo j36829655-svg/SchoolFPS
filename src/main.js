@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
 import { TERRAIN } from './data/terrain.js';
-import { PARTS } from './data/details.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { buildWorld, BUILDING_SPECS } from './world.js';
+import { buildWorld, BUILDING_SPECS, SOLIDS } from './world.js';
+import { floorAt, ceilAt, stairGoal, doorPoints, INTERIORS } from './interior.js';
 import { loadModels } from './models.js';
 import { loadTextures, tiled } from './textures.js';
 import { applyAlignment } from './align.js';
@@ -13,7 +13,7 @@ import { signedDist } from './terrain.js';
 import { Game } from './game/game.js';
 import { Hud } from './game/hud.js';
 import { Net } from './game/net.js';
-import { SLOT_KEYS, DIFFICULTY } from './game/config.js';
+import { SLOT_KEYS, DIFFICULTY, WEAPONS, WEAPON, LOADOUT } from './game/config.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
 const SPAWN = { x: -76, y: -180, yaw: -0.4 }; // 정문 진입로, 북북동(학교 안쪽)을 바라봄
@@ -79,18 +79,20 @@ scene.traverse(o => {
   o.castShadow = !flat;
   if (o.userData.solid) worldMeshes.push(o);
 });
-const groundAt = (x, y) => terrain.heightAt(x, y);
+// 발밑 높이: 건물 안이면 층 바닥·계단(z = 지금 발 높이), 밖이면 지형
+const groundAt = (x, y, z) => floorAt(x, y, z) ?? terrain.heightAt(x, y);
 
 const body = new Body(physics, SPAWN.x, SPAWN.y, groundAt);
+body.ceil = ceilAt;
 physics.resolve(body.pos, body.radius);
 body.z = groundAt(body.pos.x, body.pos.y);
 let yaw = SPAWN.yaw, pitch = 0, flying = false, flyZ = 60;
 
 // ── 게임 ──
 const hud = new Hud();
-const solids = [...CAMPUS.buildings, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts).concat(CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts));
+const solids = SOLIDS;
 const game = new Game({
-  scene, camera, physics, groundAt, solids, signedDist, worldMeshes, bounds: CAMPUS.bounds, ortho, campus: CAMPUS,
+  scene, camera, physics, groundAt, stairGoal, doors: INTERIORS.flatMap(doorPoints), solids, signedDist, worldMeshes, bounds: CAMPUS.bounds, ortho, campus: CAMPUS,
   bodyPos: () => ({ x: body.pos.x, y: body.pos.y, z: body.z }),
   yaw: () => yaw, pitch: () => pitch,
   recoil: (dp, dy) => { pitch = Math.min(1.5, pitch + dp); yaw += dy; },
@@ -98,7 +100,7 @@ const game = new Game({
 }, hud);
 
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(),
+window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(), interior: { floorAt, ceilAt, INTERIORS, doorPoints, groundAt },
   // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
   exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
   set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
@@ -119,6 +121,19 @@ function showDiff() {
 }
 document.querySelectorAll('#diff button').forEach(b => b.onclick = () => { diff = b.dataset.d; try { localStorage.setItem('cfps-diff', diff); } catch {} showDiff(); });
 showDiff();
+// 시작 총 고르기 (2자루). 고른 것은 다음에도 기억한다
+let loadout = (() => { try { const g = JSON.parse(localStorage.getItem('cfps-guns')); if (Array.isArray(g) && g.length === LOADOUT && g.every(id => WEAPON[id])) return g; } catch {} return ['glock', 'mp5']; })();
+function showLoadout() {
+  $('loadout').innerHTML = WEAPONS.map(w => `<button data-g="${w.id}" class="${loadout.includes(w.id) ? 'sel' : ''}">${w.name}<small>${w.kind}</small></button>`).join('');
+  $('loadout').querySelectorAll('button').forEach(b => b.onclick = () => {
+    const id = b.dataset.g;
+    loadout = loadout.includes(id) ? loadout.filter(g => g !== id) : [...loadout, id].slice(-LOADOUT); // 3번째를 고르면 가장 먼저 고른 것이 빠진다
+    try { localStorage.setItem('cfps-guns', JSON.stringify(loadout)); } catch {}
+    showLoadout();
+  });
+}
+showLoadout();
+const gunsReady = () => loadout.length === LOADOUT || (status(`총을 ${LOADOUT}자루 고르세요`), false);
 
 function begin(m) {
   mode = m; flying = false;
@@ -126,7 +141,7 @@ function begin(m) {
   $('restart').classList.toggle('hidden', !(m === 'zombie' || m === 'pvp'));
   setPlaying(true);
 }
-$('solo').onclick = () => { game.start({ mode: 'zombie', name: playerName(), diff }); begin('zombie'); };
+$('solo').onclick = () => { if (!gunsReady()) return; game.start({ mode: 'zombie', name: playerName(), diff, guns: loadout }); begin('zombie'); };
 $('explore').onclick = () => { game.stop(); begin('explore'); };
 $('resume').onclick = () => setPlaying(true);
 $('restart').onclick = () => { game.restart(); setPlaying(true); };
@@ -152,11 +167,12 @@ function syncLobby() { const L = lobby; L.net.send({ t: 'lobby', players: [...L.
 function leaveLobby(msg = '') { lobby?.net.close(); lobby = null; showLobby(false); status(msg); }
 function startRoomGame(m, d) {
   const L = lobby; lobby = null; showLobby(false); status('');
-  game.start({ mode: m, net: L.net, name: playerName(), diff: d });
+  game.start({ mode: m, net: L.net, name: playerName(), diff: d, guns: loadout });
   game.onHostLeft = () => { game.stop(); mode = null; ['resume', 'leave', 'restart'].forEach(id => $(id).classList.add('hidden')); setPlaying(false); status('방장이 방을 닫았어요'); };
   begin(L.host ? m : 'client');
 }
 $('host').onclick = async () => {
+  if (!gunsReady()) return;
   try {
     status('방 만드는 중…');
     const net = new Net(), code = await net.host();
@@ -173,6 +189,7 @@ $('lobbyLeave').onclick = () => leaveLobby();
 $('join').onclick = async () => {
   const code = $('code').value.trim();
   if (code.length !== 4) return status('4자리 방 코드를 입력하세요');
+  if (!gunsReady()) return;
   try {
     status('연결 중…');
     const net = new Net(); await net.join(code);
@@ -190,12 +207,13 @@ $('join').onclick = async () => {
 
 // ── 입력 ──
 const keys = new Set();
-let fireHeld = false, aimHeld = false, reloadPressed = false, restartPressed = false, slotPressed = null, cycleDir = 0;
+let fireHeld = false, aimHeld = false, jumpPressed = false, reloadPressed = false, restartPressed = false, slotPressed = null, cycleDir = 0;
 addEventListener('keydown', e => {
   if (document.activeElement?.tagName === 'INPUT') return;
   keys.add(e.code);
   if (e.code === 'Tab' || (playing && /^(Arrow|Space)/.test(e.code))) e.preventDefault(); // 화면 스크롤·버튼 눌림 방지
   if (e.code === 'KeyR') { reloadPressed = true; restartPressed = true; }
+  if (e.code === 'Space' && !e.repeat) jumpPressed = true;
   const slot = SLOT_KEYS.indexOf(e.code); if (slot >= 0) slotPressed = slot;
   if (e.code === 'KeyQ' && mode !== 'explore') cycleDir = 1;
   if (e.code === 'KeyF' && mode === 'explore') {
@@ -280,7 +298,7 @@ function tick() {
     flyZ = Math.max(groundAt(body.pos.x, body.pos.y) + 1, flyZ + (Math.sin(pitch) * f + up) * sp * dt);
     camera.position.set(body.pos.x, flyZ, -body.pos.y);
   } else {
-    body.step(dt, wish, (keys.has('ShiftLeft') ? RUN : WALK) * (inGame ? game.moveMul() : 1), active && keys.has('Space'));
+    body.step(dt, wish, (keys.has('ShiftLeft') ? RUN : WALK) * (inGame ? game.moveMul() : 1), active && jumpPressed); jumpPressed = false;
     const down = inGame && !game.canMove() && !game.over ? 1.2 : 0; // 쓰러지면 시선이 낮아진다
     camera.position.set(body.pos.x, body.z + EYE - down, -body.pos.y);
   }

@@ -21,7 +21,7 @@ const ROLE = {
   paint3: c => ({ color: c, roughness: 0.5 }), paint4: c => ({ color: c, roughness: 0.5 }),
 };
 
-export async function loadModels(url = 'assets/models/buildings.glb') {
+export async function loadModels(url = 'assets/models/buildings.glb?v=6f875932') {
   const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
   if (!head?.ok) return null;
   const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
