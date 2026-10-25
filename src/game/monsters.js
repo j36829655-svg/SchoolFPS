@@ -76,7 +76,7 @@ export function makeModel(kind) {
   }
 
   // bat
-  const body = new THREE.Group(); root.add(body);
+  const body = new THREE.Group(); body.scale.setScalar(1.5); root.add(body); // 날개 폭 약 5 m
   const fur = lam(0x3a2f35), skin = lam(0x4a3a40);
   add(new THREE.SphereGeometry(1, 12, 8).scale(0.24, 0.22, 0.42), fur, 0, 0, 0.05, body);
   add(new THREE.SphereGeometry(0.17, 10, 8), fur, 0, 0.08, -0.38, body);
@@ -128,8 +128,8 @@ export function think(m, dt, W) {
 
   switch (m.state) {
     case 'search': // 아직 못 봤다: 냄새를 따라 천천히
-      [mx, my] = path(); sp = m.speed * 0.6;
-      if (los || td < 35) setState(m, 'chase');
+      [mx, my] = path(); sp = m.speed * 0.85;
+      if (los || td < 50) setState(m, 'chase');
       break;
     case 'hit':
       [mx, my] = path(); sp = m.speed * 0.15;

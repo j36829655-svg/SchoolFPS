@@ -314,8 +314,8 @@ export class Game {
       this.spawnCd -= dt;
       let n = 0; for (const m of this.monsters.values()) if (m.state !== 'dead') n++;
       if (this.queue.length && this.spawnCd <= 0 && n < ROUND.maxAlive) {
-        const kind = this.queue[0], far = kind === 'giant' ? 40 : 45;
-        const spot = this.nav.randomSpot((x, y) => alive.every(p => Math.hypot(p.x - x, p.y - y) > far) && alive.some(p => Math.hypot(p.x - x, p.y - y) < 120));
+        const kind = this.queue[0], far = kind === 'giant' ? 35 : 30;
+        const spot = this.nav.randomSpot((x, y) => alive.every(p => Math.hypot(p.x - x, p.y - y) > far) && alive.some(p => Math.hypot(p.x - x, p.y - y) < 80));
         if (spot) { this.queue.shift(); this.spawnMonster(kind, spot); }
         this.spawnCd = Math.max(0.3, 1.5 - this.round * 0.08) / (players.length > 1 ? 1.3 : 1);
       }
@@ -434,7 +434,7 @@ export class Game {
       if (id === this.myId) { p.color = color; continue; }
       Object.assign(p, { tx: x, ty: y, tz: z, yaw, pitch, speed });
     }
-    for (const id of [...this.players.keys()]) if (!seen.has(id)) this.removePlayer(id);
+    for (const id of [...this.players.keys()]) if (!seen.has(id) && id !== this.myId) this.removePlayer(id); // 나는 방장이 아직 모를 때도 지우지 않는다
     const ms = new Set();
     for (const [id, ki, x, y, z, yaw, si, st, wp, mv, hpFrac] of m.mons) {
       ms.add(id);

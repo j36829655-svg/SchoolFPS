@@ -3,7 +3,7 @@ import * as THREE from 'three';
 // 1인칭 총 모델: config.js 의 m(모양 값)으로 몸통·총열·탄창·개머리·조준기·손을 조립한다.
 // 좌표: x 오른쪽, y 위, -z 앞(총구 방향). 원점 = 손잡이 윗부분(방아쇠 근처), 몸통 바닥이 y = 0.
 const mats = new Map();
-function mat(color, rough = 0.5, metal = 0.45) {
+function mat(color, rough = 0.6, metal = 0.25) {
   const k = `${color}|${rough}|${metal}`;
   if (!mats.has(k)) mats.set(k, new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }));
   return mats.get(k);

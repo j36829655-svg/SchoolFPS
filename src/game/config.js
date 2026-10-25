@@ -47,7 +47,7 @@ export const MONSTERS = {
   giant: { name: '거인', hp: 1200, speed: 1.6, dmg: 38, range: 3.6, cd: 2.8, windup: 1.2, aoe: 4.2, score: 1200, radius: 0.95, drop: 5, boss: true, scale: 2.3,
     hits: [[3.95, 0.5, true], [2.7, 0.95], [1.3, 0.75]] },
   bat: { name: '거대 박쥐', hp: 40, speed: 7.5, dmg: 14, range: 1.7, cd: 2.6, windup: 0.7, alt: 7, orbit: 9, dive: 16, score: 175, radius: 0.5, drop: 0.8,
-    hits: [[0.12, 0.3, true], [0, 0.6]] },
+    hits: [[0.18, 0.4, true], [0, 0.75]] },
 };
 export const KINDS = Object.keys(MONSTERS);
 
