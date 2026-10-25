@@ -48,22 +48,22 @@ export const MONSTERS = {
   zombie: { name: '좀비', attack: 'melee', hp: 70, speed: 3.0, dmg: 12, range: 1.6, cd: 1.1, windup: 0.4, score: 100, radius: 0.35, drop: 1, from: 1,
     hits: [[1.72, 0.22, true], [1.18, 0.4], [0.55, 0.32]] },
   // 빠르고 약하다. 멀리서 달려와 빈틈을 노린다
-  runner: { name: '질주 좀비', attack: 'melee', hp: 40, speed: 5.6, dmg: 9, range: 1.5, cd: 0.8, windup: 0.25, score: 120, radius: 0.32, drop: 0.7, from: 2, share: 0.22,
+  runner: { name: '질주 좀비', attack: 'melee', hp: 40, speed: 5.6, dmg: 9, range: 1.5, cd: 0.8, windup: 0.25, score: 120, radius: 0.32, drop: 0.7, from: 1, share: 0.22,
     hits: [[1.66, 0.21, true], [1.12, 0.36], [0.52, 0.3]] },
   // 사람을 보면 두 배 가까이 빨라져 덮치고, 몸을 낮췄다가 뛰어오른다
-  spider: { name: '거대 거미', attack: 'leap', hp: 55, speed: 6.0, rush: 1.9, dmg: 16, range: 1.4, cd: 2.2, windup: 0.55, leap: 9, leapSpeed: 14, score: 150, radius: 0.6, drop: 1.2, from: 3, share: 0.16,
+  spider: { name: '거대 거미', attack: 'leap', hp: 55, speed: 6.0, rush: 1.9, dmg: 16, range: 1.4, cd: 2.2, windup: 0.55, leap: 9, leapSpeed: 14, score: 150, radius: 0.6, drop: 1.2, from: 1, share: 0.16,
     hits: [[0.78, 0.26, true], [0.6, 0.6]] },
   // 공중에서 맴돌다 급강하
-  bat: { name: '거대 박쥐', attack: 'dive', hp: 40, speed: 9.0, dmg: 14, range: 1.7, cd: 2.4, windup: 0.65, alt: 7, orbit: 9, dive: 18, score: 175, radius: 0.5, drop: 0.8, from: 3, share: 0.13,
+  bat: { name: '거대 박쥐', attack: 'dive', hp: 40, speed: 9.0, dmg: 14, range: 1.7, cd: 2.4, windup: 0.65, alt: 7, orbit: 9, dive: 18, score: 175, radius: 0.5, drop: 0.8, from: 1, share: 0.13,
     hits: [[0.18, 0.4, true], [0, 0.75]] },
   // 셋이 무리 지어 다니며 짧게 물어뜯는다
-  hound: { name: '좀비 개', attack: 'leap', hp: 38, speed: 7.2, rush: 1.15, dmg: 10, range: 1.3, cd: 1.3, windup: 0.3, leap: 4.5, leapSpeed: 12, score: 130, radius: 0.4, drop: 0.6, from: 4, share: 0.18, pack: 3,
+  hound: { name: '좀비 개', attack: 'leap', hp: 38, speed: 7.2, rush: 1.15, dmg: 10, range: 1.3, cd: 1.3, windup: 0.3, leap: 4.5, leapSpeed: 12, score: 130, radius: 0.4, drop: 0.6, from: 1, share: 0.18, pack: 3,
     hits: [[0.75, 0.2, true], [0.55, 0.38]] },
   // 거리를 두고 산성 침을 던진다. 날아오는 침은 피할 수 있다
-  spitter: { name: '독 뱉는 좀비', attack: 'spit', hp: 55, speed: 3.4, dmg: 14, range: 20, keep: 11, cd: 2.4, windup: 0.6, shot: 15, score: 170, radius: 0.36, drop: 1, from: 4, share: 0.12,
+  spitter: { name: '독 뱉는 좀비', attack: 'spit', hp: 55, speed: 3.4, dmg: 14, range: 20, keep: 11, cd: 2.4, windup: 0.6, shot: 15, score: 170, radius: 0.36, drop: 1, from: 1, share: 0.12,
     hits: [[1.7, 0.22, true], [1.15, 0.4], [0.55, 0.32]] },
   // 다가와서 부풀어 오르다 터진다. 총으로 먼저 터뜨리면 주변 몬스터도 휘말린다
-  bomber: { name: '자폭 좀비', attack: 'explode', hp: 90, speed: 3.6, dmg: 40, range: 2.2, aoe: 4.5, cd: 0, windup: 0.9, score: 160, radius: 0.48, drop: 0.8, from: 6, share: 0.09,
+  bomber: { name: '자폭 좀비', attack: 'explode', hp: 90, speed: 3.6, dmg: 40, range: 2.2, aoe: 4.5, cd: 0, windup: 0.9, score: 160, radius: 0.48, drop: 0.8, from: 1, share: 0.09,
     hits: [[1.75, 0.24, true], [1.15, 0.55], [0.55, 0.36]] },
   // 보스. 느리지만 표시된 원 안을 크게 내려찍는다
   giant: { name: '거인', attack: 'slam', hp: 1200, speed: 2.1, dmg: 38, range: 3.6, cd: 2.6, windup: 1.1, aoe: 4.2, score: 1200, radius: 0.95, drop: 5, boss: true, scale: 2.3,
