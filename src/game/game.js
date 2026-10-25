@@ -332,7 +332,7 @@ export class Game {
 
     this.navT -= dt;
     if (this.navT <= 0) { this.nav.update(alive.map(p => [p.x, p.y])); this.navT = 0.5; }
-    const W = { players: alive, monsters: [...this.monsters.values()], nav: this.nav, physics: this.ctx.physics, groundAt: this.ctx.groundAt, stairGoal: this.ctx.stairGoal,
+    const W = { players: alive, monsters: [...this.monsters.values()], nav: this.nav, physics: this.ctx.physics, groundAt: this.ctx.groundAt, stairGoal: this.ctx.stairGoal, inWater: this.ctx.inWater,
       hurt: (p, dmg, m) => this.damage('p' + p.id, dmg, null, false, m), sound: (k, x, y) => this.sound(k, x, y),
       relocate: m => { const s = this.nav.randomSpot((x, y) => alive.every(p => Math.hypot(p.x - x, p.y - y) > 35) && alive.some(p => Math.hypot(p.x - x, p.y - y) < 80)); if (s) { m.x = s[0]; m.y = s[1]; } } };
     for (const m of W.monsters) {

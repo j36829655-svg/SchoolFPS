@@ -49,6 +49,10 @@ const css = `
 #ghud .results td:last-child{font-weight:800;text-align:right}
 #ghud .results p{margin:14px 0 0;opacity:.8;font-size:14px}
 #ghud .results .new{color:#fde047;font-weight:800}
+@media (pointer:coarse){ /* 휴대폰: 버튼·조이스틱을 피해 위쪽으로 */
+#ghud .map{width:110px;height:110px}#ghud .feed,#ghud .slots{display:none}
+#ghud .stats{left:64px;top:8px;font-size:13px}#ghud .hp{left:64px;top:50px;bottom:auto;width:150px}
+#ghud .wpn{left:64px;right:auto;top:84px;bottom:auto;text-align:left}#ghud .ammo{font-size:22px}#ghud .top{font-size:14px;top:4px}#ghud .center{font-size:22px}#ghud .note{top:40%}}
 `;
 
 export const KEY_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'V'];

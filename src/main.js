@@ -3,7 +3,7 @@ import { CAMPUS } from './data/campus.js';
 import { TERRAIN } from './data/terrain.js';
 import { Physics, Body } from './physics.js';
 import { Sky } from 'three/addons/objects/Sky.js';
-import { buildWorld, BUILDING_SPECS, SOLIDS } from './world.js';
+import { buildWorld, BUILDING_SPECS, SOLIDS, inWater } from './world.js';
 import { floorAt, ceilAt, stairGoal, doorPoints, INTERIORS } from './interior.js';
 import { loadModels } from './models.js';
 import { loadTextures, tiled } from './textures.js';
@@ -14,13 +14,16 @@ import { Game } from './game/game.js';
 import { Hud } from './game/hud.js';
 import { Net } from './game/net.js';
 import { SLOT_KEYS, DIFFICULTY, WEAPONS, WEAPON, LOADOUT } from './game/config.js';
+import { isTouch, createTouch } from './touch.js';
+import { gunThumbs } from './game/gunmodel.js';
 
 const EYE = 1.65, WALK = 4.5, RUN = 7.5, FLY = 25;
 const SPAWN = { x: -76, y: -180, yaw: -0.4 }; // 정문 진입로, 북북동(학교 안쪽)을 바라봄
 const SUN_DIR = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(48), THREE.MathUtils.degToRad(200)); // 고도 42°, 남남서
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const MAX_DPR = isTouch ? 1.5 : 2; // 휴대폰은 해상도를 조금 낮춰 부드럽게
+renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_DPR));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.9;
@@ -45,7 +48,7 @@ scene.add(sky);
 scene.add(new THREE.HemisphereLight(0xdfeeff, 0x6b7b55, 1.2));
 const sun = new THREE.DirectionalLight(0xfff4e0, 2.6);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
 Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
 sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.04;
@@ -92,7 +95,7 @@ let yaw = SPAWN.yaw, pitch = 0, flying = false, flyZ = 60;
 const hud = new Hud();
 const solids = SOLIDS;
 const game = new Game({
-  scene, camera, physics, groundAt, stairGoal, doors: INTERIORS.flatMap(doorPoints), solids, signedDist, worldMeshes, bounds: CAMPUS.bounds, ortho, campus: CAMPUS,
+  scene, camera, physics, groundAt, stairGoal, inWater, doors: INTERIORS.flatMap(doorPoints), solids, signedDist, worldMeshes, bounds: CAMPUS.bounds, ortho, campus: CAMPUS,
   bodyPos: () => ({ x: body.pos.x, y: body.pos.y, z: body.z }),
   yaw: () => yaw, pitch: () => pitch,
   recoil: (dp, dy) => { pitch = Math.min(1.5, pitch + dp); yaw += dy; },
@@ -100,7 +103,7 @@ const game = new Game({
 }, hud);
 
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(), interior: { floorAt, ceilAt, INTERIORS, doorPoints, groundAt },
+window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(), get touch() { return touch; }, interior: { floorAt, ceilAt, INTERIORS, doorPoints, groundAt, inWater },
   // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
   exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
   set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
@@ -121,10 +124,11 @@ function showDiff() {
 }
 document.querySelectorAll('#diff button').forEach(b => b.onclick = () => { diff = b.dataset.d; try { localStorage.setItem('cfps-diff', diff); } catch {} showDiff(); });
 showDiff();
-// 시작 총 고르기 (2자루). 고른 것은 다음에도 기억한다
+// 시작 총 고르기 (2자루, 총 그림과 함께). 고른 것은 다음에도 기억한다
+const THUMBS = gunThumbs(WEAPONS.filter(w => !w.melee), scene.environment);
 let loadout = (() => { try { const g = JSON.parse(localStorage.getItem('cfps-guns')); if (Array.isArray(g) && g.length === LOADOUT && g.every(id => WEAPON[id] && !WEAPON[id].melee)) return g; } catch {} return ['glock', 'mp5']; })();
 function showLoadout() {
-  $('loadout').innerHTML = WEAPONS.filter(w => !w.melee).map(w => `<button data-g="${w.id}" class="${loadout.includes(w.id) ? 'sel' : ''}">${w.name}<small>${w.kind}</small></button>`).join('');
+  $('loadout').innerHTML = WEAPONS.filter(w => !w.melee).map(w => `<button data-g="${w.id}" class="${loadout.includes(w.id) ? 'sel' : ''}"><img src="${THUMBS[w.id]}" alt="">${w.name}<small>${w.kind}</small></button>`).join('');
   $('loadout').querySelectorAll('button').forEach(b => b.onclick = () => {
     const id = b.dataset.g;
     loadout = loadout.includes(id) ? loadout.filter(g => g !== id) : [...loadout, id].slice(-LOADOUT); // 3번째를 고르면 가장 먼저 고른 것이 빠진다
@@ -207,6 +211,7 @@ $('join').onclick = async () => {
 
 // ── 입력 ──
 const keys = new Set();
+const touch = createTouch(() => setPlaying(false)); // 휴대폰이면 화면 버튼·조이스틱, 아니면 빈 상태
 let fireHeld = false, aimHeld = false, jumpPressed = false, reloadPressed = false, restartPressed = false, slotPressed = null, cycleDir = 0;
 addEventListener('keydown', e => {
   if (document.activeElement?.tagName === 'INPUT') return;
@@ -231,7 +236,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) relea
 // '플레이 중' 여부는 직접 관리하고, 잠금이 없으면 마우스 버튼을 누른 채 끌어서 시점을 돌린다.
 let playing = false, dragging = false;
 function setPlaying(v) {
-  playing = v;
+  playing = v; touch.show(v);
   if (v) document.activeElement?.blur?.(); // 메뉴 버튼에 포커스가 남으면 Space(점프)가 버튼을 다시 누른다
   startEl.style.display = v ? 'none' : 'flex';
   $('cross').style.display = game.active ? 'none' : ''; // 게임 중에는 HUD 조준점을 쓴다
@@ -258,8 +263,8 @@ addEventListener('mousemove', e => {
 // 창 크기에 맞춘다. 앱 내장 브라우저처럼 resize 이벤트 없이 크기가 바뀌는 곳도 있어 매 프레임 확인한다
 function fitView() {
   const w = innerWidth, h = innerHeight, c = renderer.domElement;
-  if (c.clientWidth === w && c.clientHeight === h && renderer.getPixelRatio() === Math.min(devicePixelRatio, 2)) return;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  if (c.clientWidth === w && c.clientHeight === h && renderer.getPixelRatio() === Math.min(devicePixelRatio, MAX_DPR)) return;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, MAX_DPR));
   renderer.setSize(w, h);
   camera.aspect = w / h; camera.updateProjectionMatrix();
 }
@@ -280,10 +285,17 @@ function tick() {
   // 이동 입력 → 월드 방향 (x 동, y 북). yaw 0 = 북쪽
   let f = 0, s = 0;
   if (active) {
-    if (keys.has('KeyW') || keys.has('ArrowUp')) f += 1; if (keys.has('KeyS') || keys.has('ArrowDown')) f -= 1;
-    if (keys.has('KeyD') || keys.has('ArrowRight')) s += 1; if (keys.has('KeyA') || keys.has('ArrowLeft')) s -= 1;
+    if (keys.has('KeyW')) f += 1; if (keys.has('KeyS')) f -= 1;
+    if (keys.has('KeyD')) s += 1; if (keys.has('KeyA')) s -= 1;
+    f += touch.my; s += touch.mx; // 휴대폰 조이스틱
+    // 마우스 없이: 방향키로 시점 (← → 돌기, ↑ ↓ 위아래), 휴대폰은 화면 끌기
+    const ks = 2.2 * dt * camera.fov / 75;
+    yaw += ((keys.has('ArrowLeft') ? 1 : 0) - (keys.has('ArrowRight') ? 1 : 0)) * ks - touch.lookX * 0.005 * camera.fov / 75;
+    pitch = Math.max(-1.5, Math.min(1.5, pitch + ((keys.has('ArrowUp') ? 1 : 0) - (keys.has('ArrowDown') ? 1 : 0)) * ks * 0.7 - touch.lookY * 0.005 * camera.fov / 75));
   }
-  const len = Math.hypot(f, s) || 1;
+  touch.lookX = touch.lookY = 0;
+  const len = Math.max(1, Math.hypot(f, s)); // 조이스틱은 살짝 밀면 천천히
+  const sprinting = keys.has('ShiftLeft') || touch.sprint, wet = inWater(body.pos.x, body.pos.y) && !flying;
   const sin = Math.sin(yaw), cos = Math.cos(yaw);
   const wish = { x: (-sin * f + cos * s) / len, y: (cos * f + sin * s) / len };
 
@@ -298,16 +310,17 @@ function tick() {
     flyZ = Math.max(groundAt(body.pos.x, body.pos.y) + 1, flyZ + (Math.sin(pitch) * f + up) * sp * dt);
     camera.position.set(body.pos.x, flyZ, -body.pos.y);
   } else {
-    body.step(dt, wish, (keys.has('ShiftLeft') ? RUN : WALK) * (inGame ? game.moveMul() : 1), active && jumpPressed); jumpPressed = false;
+    body.step(dt, wish, (sprinting ? RUN : WALK) * (inGame ? game.moveMul() : 1) * (wet ? 0.45 : 1), active && (jumpPressed || touch.jump)); jumpPressed = touch.jump = false; // 물웅덩이에서는 느려진다
     const down = inGame && !game.canMove() && !game.over ? 1.2 : 0; // 쓰러지면 시선이 낮아진다
     camera.position.set(body.pos.x, body.z + EYE - down, -body.pos.y);
   }
   camera.rotation.set(pitch, yaw, 0);
 
   // 혼자 할 때는 메뉴를 열면 게임이 멈춘다 (멀티는 계속 진행)
-  if (playing || game.net) game.update(dt, { trigger: playing && fireHeld, aim: playing && aimHeld, moving: !!(f || s), sprint: keys.has('ShiftLeft') && f > 0,
-    reload: reloadPressed, restart: restartPressed && playing, board: keys.has('Tab'), slot: slotPressed, cycle: cycleDir });
-  reloadPressed = restartPressed = false; slotPressed = null; cycleDir = 0;
+  // 쏘기: 마우스 왼쪽·J·쏘기 버튼, 조준: 마우스 오른쪽·K·조준 버튼
+  if (playing || game.net) game.update(dt, { trigger: playing && (fireHeld || keys.has('KeyJ') || touch.fire), aim: playing && (aimHeld || keys.has('KeyK') || touch.aim), moving: !!(f || s), sprint: sprinting && f > 0,
+    reload: reloadPressed || touch.reload, restart: (restartPressed || touch.reload) && playing, board: keys.has('Tab'), slot: slotPressed, cycle: cycleDir || touch.cycle });
+  reloadPressed = restartPressed = touch.reload = false; slotPressed = null; cycleDir = touch.cycle = 0;
 
   // 그림자 영역이 플레이어를 따라다니게
   sun.target.position.copy(camera.position);

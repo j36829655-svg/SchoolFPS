@@ -160,6 +160,26 @@ function limb(parent, a, b, r0, r1, m0, m1) {
     o.position.copy(p).add(q).multiplyScalar(0.5); o.quaternion.setFromUnitVectors(UP, dir); parent.add(o);
   }
 }
+/** 총 고르기 화면용 옆모습 그림 (손은 숨긴다). 반환: { id: dataURL } */
+export function gunThumbs(list, env = null, W = 168, H = 64) {
+  const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true }); r.setPixelRatio(1); r.setSize(W, H);
+  r.toneMapping = THREE.ACESFilmicToneMapping;
+  const s = new THREE.Scene(); s.environment = env;
+  s.add(new THREE.HemisphereLight(0xffffff, 0x556677, 1.5)); const d = new THREE.DirectionalLight(0xffffff, 2.2); d.position.set(3, 4, 2); s.add(d);
+  const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10); cam.position.set(4, 0, 0); cam.lookAt(0, 0, 0); // 총구가 오른쪽
+  const out = {}, hide = [GLOVE(), SLEEVE()];
+  for (const w of list) {
+    const { group } = buildGun(w), box = new THREE.Box3();
+    group.updateMatrixWorld(true);
+    group.traverse(o => { if (!o.isMesh) return; if (hide.includes(o.material)) o.visible = false; else box.union(new THREE.Box3().setFromObject(o)); });
+    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), half = Math.max(sz.z / 2 * H / W, sz.y / 2) * 1.08;
+    group.position.sub(c); cam.top = half; cam.bottom = -half; cam.left = -half * W / H; cam.right = half * W / H; cam.updateProjectionMatrix();
+    s.add(group); r.render(s, cam); out[w.id] = r.domElement.toDataURL(); s.remove(group);
+  }
+  r.dispose(); r.forceContextLoss();
+  return out;
+}
+
 function finish(out) {
   out.group.traverse(o => { if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.frustumCulled = false; } });
   return out;

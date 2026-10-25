@@ -217,6 +217,7 @@ export function think(m, dt, W) {
       const px = -uy * m.detour, py = ux * m.detour; ux = ux * 0.4 + px; uy = uy * 0.4 + py;
       const k = Math.hypot(ux, uy); ux /= k; uy /= k;
     }
+    if (!flyer && W.inWater?.(m.x, m.y)) sp *= 0.5; // 물웅덩이에서는 느려진다
     const pos = { x: m.x + ux * sp * dt, y: m.y + uy * sp * dt };
     W.physics.resolve(pos, d.radius);
     m.mv = Math.hypot(pos.x - m.x, pos.y - m.y) / dt; m.x = pos.x; m.y = pos.y;

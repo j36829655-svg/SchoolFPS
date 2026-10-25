@@ -34,6 +34,9 @@ const WATER = () => CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pt
 export const BUILDING_SPECS = [];
 /** 길찾기에서 막힌 칸으로 쓸 다각형: 건물 벽(문 빼고)·부속 구조물·비닐하우스·연못 */
 export const SOLIDS = [];
+const WATERS = [];
+/** 물웅덩이(연못) 안인지: 걷는 속도가 느려진다 */
+export const inWater = (x, y) => WATERS.some(p => signedDist(x, y, p) < 0);
 let OTHERS = []; // 모든 건물·구조물 외곽선 (출입문 위치를 고를 때 문 앞이 막혔는지 본다)
 
 /** ortho: 브이월드 항공사진(있으면 지형에 입히고 나무 위치를 사진에서 뽑는다) */
@@ -46,7 +49,7 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
   for (const b of CAMPUS.buildings) Object.assign(b, OVERRIDES[b.id]);
   const levels = new Map();
   for (const g of CAMPUS.grounds) {
-    const opt = g.type === 'water' ? { margin: 0, blend: 5, offset: -1.6 } : { margin: 1, blend: 6 };
+    const opt = g.type === 'water' ? { margin: 0, blend: 5, offset: -0.7 } : { margin: 1, blend: 6 };
     levels.set(g, terrain.flatten(g.pts, opt));
   }
   for (const b of CAMPUS.buildings) levels.set(b, terrain.flatten(b.pts, { margin: 2, blend: 6 }));
@@ -68,9 +71,9 @@ export function buildWorld(scene, physics, ortho = null, models = null) {
   for (const g of CAMPUS.grounds) {
     const y = levels.get(g);
     if (g.type === 'water') {
-      const water = decal(g.pts, y + 1.3, new THREE.MeshLambertMaterial({ color: 0x3d6f86, transparent: true, opacity: 0.88 }));
+      const water = decal(g.pts, y + 0.45, new THREE.MeshLambertMaterial({ color: 0x3d6f86, transparent: true, opacity: 0.72 })); // 무릎 깊이 물웅덩이: 들어갈 수 있고 느려진다
       scene.add(water);
-      physics.addPolygon(g.pts); SOLIDS.push(g.pts);
+      WATERS.push(g.pts);
     } else {
       const lines = g.type === 'futsal' || g.type === 'court' || g.name === '대운동장';
       const surface = { dirt: ['dirt', 5, 0xffffff], asphalt: ['asphalt', 4, 0xffffff], farm: ['dirt', 3, 0xa88a6a] }[g.type];

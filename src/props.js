@@ -144,7 +144,7 @@ export function buildProps(scene, physics, terrain) {
       }
     }
   }, true);
-  const waterY = terrain.heightAt(-5, -130) + 1.3;
+  const waterY = terrain.heightAt(-5, -130) + 0.45; // world.js 물웅덩이 수면과 같은 높이
   instanced(scene, new THREE.ConeGeometry(0.06, 1.3, 3), new THREE.MeshLambertMaterial({ color: 0x9c9a5c }), reeds, ([x, y, k], m) =>
     m.compose(new THREE.Vector3(x, waterY + 0.45, -y), new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.sin(x) * 0.2, 0, Math.cos(y) * 0.2)), new THREE.Vector3(1, 0.6 + (k % 3) * 0.15, 1)));
 
