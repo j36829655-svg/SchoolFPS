@@ -15,6 +15,7 @@ const PVP_HITS = [[1.72, 0.22, true], [1.18, 0.4], [0.55, 0.32]];
 const SURVIVE_AT = [20, -70]; // 생존 모드 시작·부활 지점 (캠퍼스 가운데)
 const UNLOCK_ORDER = [...ROUND.startGuns, ...ROUND.unlock]; // 고르지 않은 총이 이 순서로 하나씩 열린다
 const PICK_KINDS = ['ammo', 'health'];
+const SHOT_GEO = new THREE.SphereGeometry(0.16, 10, 8), SHOT_MAT = new THREE.MeshBasicMaterial({ color: 0x9cff3a });
 const BLOOD = { zombie: 0x6b1a10, spider: 0x7a8a20, giant: 0x5a1010, bat: 0x6b1a10 };
 
 export class Game {
@@ -36,7 +37,7 @@ export class Game {
     this.mode = mode; this.net = net; this.diffKey = diff; this.diff = DIFFICULTY[diff];
     this.isHost = !net || net.isHost;
     this.myId = net ? net.id : 'host';
-    this.players = new Map(); this.monsters = new Map(); this.pickups = new Map();
+    this.players = new Map(); this.monsters = new Map(); this.pickups = new Map(); this.shots = []; this.shotMeshes ??= new Map();
     this.nextId = 1; this.round = 0; this.cleared = 0; this.phase = 'prep'; this.phaseT = ROUND.prep; this.queue = []; this.spawnCd = 0;
     this.msg = ''; this.msgT = 0; this.over = false; this.sendT = 0; this.navT = 0; this.now = 0; this.survive = 0; this.saved = null; this.mapT = 0;
     this.me = this.addPlayer(this.myId, name, COLORS[0]);
@@ -63,6 +64,7 @@ export class Game {
     for (const p of this.players.values()) if (p.avatar) this.ctx.scene.remove(p.avatar.root);
     for (const m of this.monsters.values()) this.ctx.scene.remove(m.model.root);
     for (const k of this.pickups.values()) this.ctx.scene.remove(k.mesh);
+    for (const s of this.shotMeshes.values()) this.ctx.scene.remove(s); this.shotMeshes.clear();
     this.net?.close(); this.net = null;
     this.active = false; this.arsenal.visible = false; this.arsenal.setFov(75);
     this.hud.show(false); this.hud.center(''); this.hud.results(null);
@@ -72,7 +74,7 @@ export class Game {
   addPlayer(id, name, color) {
     if (this.players.has(id)) return this.players.get(id);
     const p = { id, name, color, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, hp: PLAYER.hp, alive: true, kills: 0, deaths: 0, score: 0, speed: 0, hurtT: 0, respawnAt: 0, tx: 0, ty: 0, tz: 0 };
-    if (id !== this.myId) { p.avatar = new Avatar({ shirt: new THREE.Color(color).getHex(), name }); this.ctx.scene.add(p.avatar.root); }
+    if (id !== this.myId) { p.avatar = new Avatar({ shirt: new THREE.Color(color).getHex() }); p.avatar.setName(name, color); this.ctx.scene.add(p.avatar.root); }
     this.players.set(id, p);
     return p;
   }
@@ -106,6 +108,8 @@ export class Game {
       if (!p.avatar) continue;
       p.x += (p.tx - p.x) * k; p.y += (p.ty - p.y) * k; p.z += (p.tz - p.z) * k;
       p.avatar.root.position.set(p.x, p.z, -p.y); p.avatar.root.rotation.y = p.yaw;
+      if (p.avatar.tagName !== p.name) p.avatar.setName(p.name, p.color); // 이름이 바뀌면 머리 위 닉네임도 바꾼다
+      p.avatar.tag.visible = p.alive;
       p.deadT = p.alive ? 0 : (p.deadT ?? 0) + dt;
       p.avatar.root.visible = p.alive || p.deadT < 2;
       p.avatar.animate(dt, p.speed, 0, p.alive ? 0 : Math.min(1, p.deadT * 3));
@@ -116,6 +120,7 @@ export class Game {
       m.model.animate(dt, m);
     }
     for (const k2 of this.pickups.values()) { k2.spin = (k2.spin ?? Math.random() * 6) + dt * 1.5; k2.mesh.rotation.y = k2.spin; k2.mesh.position.set(k2.x, this.ctx.groundAt(k2.x, k2.y) + 0.35 + Math.sin(k2.spin * 2) * 0.08, -k2.y); }
+    this.renderShots();
   }
 
   drawHud(dt, input) {
@@ -149,7 +154,7 @@ export class Game {
       this.mapT = 0.1;
       const dots = [];
       for (const k of this.pickups.values()) dots.push({ x: k.x, y: k.y, color: k.kind === 'ammo' ? '#facc15' : '#4ade80', r: 2.5 });
-      for (const m of this.monsters.values()) if (m.state !== 'dead') dots.push({ x: m.x, y: m.y, color: { zombie: '#ef4444', spider: '#fb923c', giant: '#dc2626', bat: '#c084fc' }[m.kind], r: m.kind === 'giant' ? 6 : 3 });
+      for (const m of this.monsters.values()) if (m.state !== 'dead') dots.push({ x: m.x, y: m.y, color: { zombie: '#ef4444', runner: '#f87171', spider: '#fb923c', bat: '#c084fc', hound: '#a16207', spitter: '#84cc16', bomber: '#f97316', giant: '#dc2626' }[m.kind], r: m.kind === 'giant' ? 6 : 3 });
       for (const p of this.players.values()) if (p !== me && p.alive) dots.push({ x: p.x, y: p.y, color: p.color, r: 4 });
       this.minimap.draw(me, dots);
     }
@@ -199,7 +204,7 @@ export class Game {
         const f = best <= d.range ? 1 : Math.max(d.falloff, 1 - (1 - d.falloff) * (best - d.range) / d.range);
         const dmg = d.dmg * f * (hit.head ? d.head : 1), h = hits.get(hit.key) ?? { dmg: 0, head: false };
         h.dmg += dmg; h.head ||= hit.head; hits.set(hit.key, h);
-        A.fx.burst(point, hit.kind === 'player' ? new THREE.Color(this.me.color).getHex() : BLOOD[hit.kind], hit.head ? 12 : 6);
+        A.fx.burst(point, hit.kind === 'player' ? new THREE.Color(this.me.color).getHex() : BLOOD[hit.kind] ?? 0x6b1a10, hit.head ? 12 : 6);
       } else if (point && !d.melee) {
         if (this.mode === 'pvp') A.fx.decal(point, normal, new THREE.Color(this.me.color).getHex(), 0.18);
         else A.fx.decal(point, normal);
@@ -228,6 +233,7 @@ export class Game {
         shooter.kills++; shooter.score += pts;
         this.toast(by, 'kill', { pts, head });
       }
+      if (m.def.attack === 'explode') this.explode(m, by); // 총으로 터뜨리면 주변 몬스터도 휘말린다
       if (m.kind === 'giant') { this.feed(`${shooter?.name ?? '누군가'} — 거인 처치!`); for (let i = 0; i < 3; i++) this.spawnPickup(PICK_KINDS[i % 2], m.x + (Math.random() - 0.5) * 4, m.y + (Math.random() - 0.5) * 4); }
       else if (Math.random() < this.diff.drop * m.def.drop) this.spawnPickup(Math.random() < 0.6 ? 'ammo' : 'health', m.x, m.y);
       return;
@@ -307,6 +313,7 @@ export class Game {
         left: this.enemyCount(), msg: this.msg, over: this.over, survive: Math.round(this.survive),
         players: players.map(p => [p.id, p.name, p.color, +p.x.toFixed(2), +p.y.toFixed(2), +p.z.toFixed(2), +p.yaw.toFixed(2), +p.pitch.toFixed(2), Math.round(p.hp), p.alive, p.kills, p.deaths, p.speed, p.score]),
         mons: [...this.monsters.values()].map(m => [m.id, KINDS.indexOf(m.kind), +m.x.toFixed(2), +m.y.toFixed(2), +m.z.toFixed(2), +m.yaw.toFixed(2), STATES.indexOf(m.state), +m.st.toFixed(2), +m.wp.toFixed(2), +m.mv.toFixed(1), +(m.hp / m.maxHp).toFixed(3)]),
+        shots: this.shots.map(s => [s.id, +s.x.toFixed(2), +s.y.toFixed(2), +s.z.toFixed(2)]),
         picks: [...this.pickups.values()].map(k => [k.id, PICK_KINDS.indexOf(k.kind), +k.x.toFixed(1), +k.y.toFixed(1)]) });
     }
   }
@@ -334,11 +341,13 @@ export class Game {
     if (this.navT <= 0) { this.nav.update(alive.map(p => [p.x, p.y])); this.navT = 0.5; }
     const W = { players: alive, monsters: [...this.monsters.values()], nav: this.nav, physics: this.ctx.physics, groundAt: this.ctx.groundAt, stairGoal: this.ctx.stairGoal, inWater: this.ctx.inWater,
       hurt: (p, dmg, m) => this.damage('p' + p.id, dmg, null, false, m), sound: (k, x, y) => this.sound(k, x, y),
+      spit: (m, aim) => this.spit(m, aim), explode: m => this.explode(m, null),
       relocate: m => { const s = this.nav.randomSpot((x, y) => alive.every(p => Math.hypot(p.x - x, p.y - y) > 35) && alive.some(p => Math.hypot(p.x - x, p.y - y) < 80)); if (s) { m.x = s[0]; m.y = s[1]; } } };
     for (const m of W.monsters) {
       think(m, dt, W);
       if (m.state === 'dead' && m.st > 2.6) { this.ctx.scene.remove(m.model.root); this.monsters.delete(m.id); }
     }
+    this.updateShots(dt, alive);
   }
 
   startRound(players) {
@@ -364,6 +373,47 @@ export class Game {
       const spot = this.nav.randomSpot((x, y) => Math.hypot(x - p.x, y - p.y) < 16 && Math.hypot(x - p.x, y - p.y) > 3);
       if (spot) this.spawnPickup(i < n ? 'ammo' : 'health', ...spot);
     }
+  }
+
+  /** 독 뱉는 좀비: 노린 자리로 포물선을 그리며 날아가는 산성 침 (보고 피할 수 있다) */
+  spit(m, aim) {
+    const G = 6, sz = m.z + 1.6, dx = aim.x - m.x, dy = aim.y - m.y, T = Math.max(0.3, Math.hypot(dx, dy) / m.def.shot);
+    this.shots.push({ id: this.nextId++, x: m.x, y: m.y, z: sz, vx: dx / T, vy: dy / T, vz: (aim.z - sz) / T + 0.5 * G * T, dmg: m.dmg, life: T + 1.5, from: m });
+  }
+  updateShots(dt, alive) {
+    this.shots = this.shots.filter(s => {
+      const px = s.x, py = s.y; s.vz -= 6 * dt; s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt; s.life -= dt;
+      const p = alive.find(p => Math.hypot(p.x - s.x, p.y - s.y) < 0.65 && s.z > p.z && s.z < p.z + 1.9);
+      if (p) this.damage('p' + p.id, s.dmg, null, false, s.from);
+      const hit = p || s.z < this.ctx.groundAt(s.x, s.y) || this.ctx.physics.blocked(px, py, s.x, s.y) || s.life <= 0;
+      if (hit) this.sound('splat', s.x, s.y);
+      return !hit;
+    });
+  }
+  /** 자폭: 반경 안 사람에게 (가까울수록 큰) 피해. by(쏜 사람)가 있으면 주변 몬스터도 휘말리고 그 킬은 쏜 사람 몫 */
+  explode(m, by) {
+    if (m.exploded) return; m.exploded = true;
+    const R = m.def.aoe;
+    for (const p of [...this.players.values()]) { const dd = Math.hypot(p.x - m.x, p.y - m.y); if (p.alive && dd < R && Math.abs(p.z - m.z) < 3) this.damage('p' + p.id, m.dmg * (by ? 0.5 : 1) * (1 - 0.6 * dd / R), null, false, m); }
+    if (by) for (const o of [...this.monsters.values()]) { const dd = Math.hypot(o.x - m.x, o.y - m.y); if (o !== m && o.state !== 'dead' && dd < R) this.damage('m' + o.id, 140 * (1 - 0.5 * dd / R), by); }
+    if (m.state !== 'dead') { m.state = 'dead'; m.st = 0; m.hp = 0; }
+    this.boom(m.x, m.y, m.z);
+  }
+  boom(x, y, z, relay = true) {
+    this.arsenal.fx.burst(new THREE.Vector3(x, z + 1, -y), 0xff7a20, 40, 7);
+    this.sound('boom', x, y, false);
+    if (relay && this.isHost) this.net?.send({ t: 'boom', x: +x.toFixed(1), y: +y.toFixed(1), z: +z.toFixed(1) });
+  }
+  /** 날아가는 산성 침 그리기 (방장·참가자 공통) */
+  renderShots() {
+    const seen = new Set();
+    for (const s of this.shots) {
+      seen.add(s.id);
+      let o = this.shotMeshes.get(s.id);
+      if (!o) { o = new THREE.Mesh(SHOT_GEO, SHOT_MAT); this.ctx.scene.add(o); this.shotMeshes.set(s.id, o); }
+      o.position.set(s.x, s.z, -s.y);
+    }
+    for (const [id, o] of this.shotMeshes) if (!seen.has(id)) { this.ctx.scene.remove(o); this.shotMeshes.delete(id); }
   }
 
   spawnMonster(kind, [x, y]) {
@@ -422,6 +472,7 @@ export class Game {
       case 'fx': this.localFx(m.kind, m); break;
       case 'feed': this.hud.feed(m.text); break;
       case 'snd': this.sound(m.k, m.x, m.y, false); break;
+      case 'boom': this.boom(m.x, m.y, m.z, false); break;
     }
   }
 
@@ -456,6 +507,7 @@ export class Game {
     const ks = new Set();
     for (const [id, ki, x, y] of m.picks) { ks.add(id); if (!this.pickups.has(id)) this.spawnPickup(PICK_KINDS[ki], x, y, id); }
     for (const id of [...this.pickups.keys()]) if (!ks.has(id)) this.removePickup(id);
+    this.shots = (m.shots ?? []).map(([id, x, y, z]) => ({ id, x, y, z }));
   }
 }
 

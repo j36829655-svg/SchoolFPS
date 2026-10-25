@@ -38,19 +38,36 @@ export const WEAPON = Object.fromEntries(WEAPONS.map((w, i) => [w.id, { ...w, sl
 export const LOADOUT = 2; // 시작할 때 고르는 총 수
 export const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'KeyV'];
 
-/* 몬스터
+/* 몬스터 — 각자 역할이 다르다
+   attack: melee(할퀴기) leap(도약) slam(내려찍기 범위) dive(급강하) spit(멀리서 침 뱉기) explode(자폭 범위)
    hp·dmg·speed(m/s)·range(공격 거리)·cd(공격 주기)·windup(예고 동작 시간, 이 동안 피할 수 있다)
-   hits: 맞는 부위 [높이, 반지름, 머리?] — 박쥐는 몸 중심 기준
-   drop: 보급 상자 떨어뜨릴 확률 배율 */
+   rush: 사람을 보면 이 배율로 빨라진다 · from: 처음 나오는 라운드 · share: 무리 속 비중(좀비는 나머지)
+   hits: 맞는 부위 [높이, 반지름, 머리?] — 박쥐는 몸 중심 기준 · drop: 보급 상자 떨어뜨릴 확률 배율 */
 export const MONSTERS = {
-  zombie: { name: '좀비', hp: 70, speed: 2.4, dmg: 12, range: 1.6, cd: 1.2, windup: 0.4, score: 100, radius: 0.35, drop: 1,
+  // 기본 무리. 느리지만 많다
+  zombie: { name: '좀비', attack: 'melee', hp: 70, speed: 3.0, dmg: 12, range: 1.6, cd: 1.1, windup: 0.4, score: 100, radius: 0.35, drop: 1, from: 1,
     hits: [[1.72, 0.22, true], [1.18, 0.4], [0.55, 0.32]] },
-  spider: { name: '거대 거미', hp: 55, speed: 5.6, dmg: 16, range: 1.4, cd: 2.4, windup: 0.6, leap: 9, leapSpeed: 13, score: 150, radius: 0.6, drop: 1.2,
+  // 빠르고 약하다. 멀리서 달려와 빈틈을 노린다
+  runner: { name: '질주 좀비', attack: 'melee', hp: 40, speed: 5.6, dmg: 9, range: 1.5, cd: 0.8, windup: 0.25, score: 120, radius: 0.32, drop: 0.7, from: 2, share: 0.22,
+    hits: [[1.66, 0.21, true], [1.12, 0.36], [0.52, 0.3]] },
+  // 사람을 보면 두 배 가까이 빨라져 덮치고, 몸을 낮췄다가 뛰어오른다
+  spider: { name: '거대 거미', attack: 'leap', hp: 55, speed: 6.0, rush: 1.9, dmg: 16, range: 1.4, cd: 2.2, windup: 0.55, leap: 9, leapSpeed: 14, score: 150, radius: 0.6, drop: 1.2, from: 3, share: 0.16,
     hits: [[0.78, 0.26, true], [0.6, 0.6]] },
-  giant: { name: '거인', hp: 1200, speed: 1.6, dmg: 38, range: 3.6, cd: 2.8, windup: 1.2, aoe: 4.2, score: 1200, radius: 0.95, drop: 5, boss: true, scale: 2.3,
-    hits: [[3.95, 0.5, true], [2.7, 0.95], [1.3, 0.75]] },
-  bat: { name: '거대 박쥐', hp: 40, speed: 7.5, dmg: 14, range: 1.7, cd: 2.6, windup: 0.7, alt: 7, orbit: 9, dive: 16, score: 175, radius: 0.5, drop: 0.8,
+  // 공중에서 맴돌다 급강하
+  bat: { name: '거대 박쥐', attack: 'dive', hp: 40, speed: 9.0, dmg: 14, range: 1.7, cd: 2.4, windup: 0.65, alt: 7, orbit: 9, dive: 18, score: 175, radius: 0.5, drop: 0.8, from: 3, share: 0.13,
     hits: [[0.18, 0.4, true], [0, 0.75]] },
+  // 셋이 무리 지어 다니며 짧게 물어뜯는다
+  hound: { name: '좀비 개', attack: 'leap', hp: 38, speed: 7.2, rush: 1.15, dmg: 10, range: 1.3, cd: 1.3, windup: 0.3, leap: 4.5, leapSpeed: 12, score: 130, radius: 0.4, drop: 0.6, from: 4, share: 0.18, pack: 3,
+    hits: [[0.75, 0.2, true], [0.55, 0.38]] },
+  // 거리를 두고 산성 침을 던진다. 날아오는 침은 피할 수 있다
+  spitter: { name: '독 뱉는 좀비', attack: 'spit', hp: 55, speed: 3.4, dmg: 14, range: 20, keep: 11, cd: 2.4, windup: 0.6, shot: 15, score: 170, radius: 0.36, drop: 1, from: 4, share: 0.12,
+    hits: [[1.7, 0.22, true], [1.15, 0.4], [0.55, 0.32]] },
+  // 다가와서 부풀어 오르다 터진다. 총으로 먼저 터뜨리면 주변 몬스터도 휘말린다
+  bomber: { name: '자폭 좀비', attack: 'explode', hp: 90, speed: 3.6, dmg: 40, range: 2.2, aoe: 4.5, cd: 0, windup: 0.9, score: 160, radius: 0.48, drop: 0.8, from: 6, share: 0.09,
+    hits: [[1.75, 0.24, true], [1.15, 0.55], [0.55, 0.36]] },
+  // 보스. 느리지만 표시된 원 안을 크게 내려찍는다
+  giant: { name: '거인', attack: 'slam', hp: 1200, speed: 2.1, dmg: 38, range: 3.6, cd: 2.6, windup: 1.1, aoe: 4.2, score: 1200, radius: 0.95, drop: 5, boss: true, scale: 2.3,
+    hits: [[3.95, 0.5, true], [2.7, 0.95], [1.3, 0.75]] },
 };
 export const KINDS = Object.keys(MONSTERS);
 
@@ -71,28 +88,34 @@ export const ROUND = {
   unlock: ['ump45', 'r870', 'ak47', 'm4a1', 'deagle', 'p90', 'famas', 'scarh', 'svd', 'm249'], // 라운드를 깰 때마다 하나씩
   clearBonus: r => 250 * r,
   /** 라운드가 오를수록 강해지는 정도 (체력만이 아니라 속도, 공격 주기, 예고 시간도) */
-  scale: r => ({ hp: 1 + 0.1 * (r - 1), dmg: 1 + 0.05 * (r - 1), speed: 1 + Math.min(0.25, 0.025 * (r - 1)), cd: Math.max(0.6, 1 - 0.03 * (r - 1)), windup: Math.max(0.75, 1 - 0.02 * (r - 1)) }),
+  scale: r => ({ hp: 1 + 0.1 * (r - 1), dmg: 1 + 0.05 * (r - 1), speed: 1 + Math.min(0.35, 0.03 * (r - 1)), cd: Math.max(0.6, 1 - 0.03 * (r - 1)), windup: Math.max(0.75, 1 - 0.02 * (r - 1)) }),
 };
 
 /** 라운드 r의 출현 목록 (종류 이름 배열, 나오는 순서대로) */
 export function roundPlan(r, diff, players = 1) {
   const n = Math.round((6 + 3 * r) * diff.count * (1 + 0.6 * (players - 1)));
-  const out = [];
   const boss = r >= ROUND.bossEvery && r % ROUND.bossEvery === 0;
-  let spider = 0, bat = 0, giant = 0;
-  if (r >= 3 && r <= 4) { const s = Math.round(n * 0.25 * diff.special); spider = r === 3 ? Math.ceil(s * 0.7) : Math.floor(s * 0.4); bat = s - spider; }
-  else if (r >= 5) {
-    const share = Math.min(0.6, (0.25 + 0.03 * (r - 5)) * diff.special), s = Math.round(n * share);
-    // 라운드마다 주력 조합이 바뀐다: 거미 떼 → 박쥐 떼 → 섞인 무리
-    const theme = r % 3, sp = theme === 0 ? 0.75 : theme === 1 ? 0.25 : 0.5;
-    spider = Math.round(s * sp); bat = s - spider;
+  // 나올 수 있는 특수 몬스터 비중 (난이도 special 배율). 라운드마다 한 종류가 주력이 된다
+  const specials = Object.entries(MONSTERS).filter(([k, d]) => d.share && r >= d.from);
+  const theme = specials.length ? specials[r % specials.length][0] : null;
+  const counts = {}; let used = 0;
+  for (const [k, d] of specials) {
+    const c = Math.round(n * Math.min(0.35, d.share * diff.special * (k === theme ? 1.7 : 1) * (1 + 0.04 * (r - d.from))));
+    counts[k] = d.pack ? Math.max(d.pack, Math.round(c / d.pack) * d.pack) : c; used += counts[k];
   }
+  if (used > n * 0.7) { // 특수 몬스터는 많아도 70%까지: 좀비 무리가 기본
+    const k = n * 0.7 / used; used = 0;
+    for (const [s, c] of Object.entries(counts)) { const g = MONSTERS[s].pack ?? 1; counts[s] = Math.round(c * k / g) * g; used += counts[s]; }
+  }
+  const out = [];
+  for (let i = 0; i < Math.max(3, Math.round((n - used) * (boss ? 0.6 : 1))); i++) out.push('zombie');
+  for (const [k, c] of Object.entries(counts)) {
+    const g = MONSTERS[k].pack ?? 1; // 개는 셋씩 붙어서 나온다
+    for (let i = 0; i < c; i += g) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, ...Array(Math.min(g, c - i)).fill(k));
+  }
+  let giant = 0;
   if (boss) giant = 1 + Math.floor((r - ROUND.bossEvery) / (ROUND.bossEvery * 2)) + (players > 2 ? 1 : 0);
   else if (r >= 8 && r % 4 === 0) giant = 1; // 보스전이 아니어도 가끔 거인이 섞인다
-  const zombies = Math.max(3, Math.round((n - spider - bat) * (boss ? 0.6 : 1)));
-  for (let i = 0; i < zombies; i++) out.push('zombie');
-  for (let i = 0; i < spider; i++) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, 'spider');
-  for (let i = 0; i < bat; i++) out.splice(Math.floor(Math.random() * (out.length + 1)), 0, 'bat');
   for (let i = 0; i < giant; i++) out.splice(Math.floor(out.length * (0.25 + 0.4 * i / giant)), 0, 'giant'); // 거인은 라운드 초반 이후
   return out;
 }

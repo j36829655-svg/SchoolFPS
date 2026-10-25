@@ -16,12 +16,21 @@ export function makeModel(kind) {
   const root = new THREE.Group();
   const add = (geo, m, x, y, z, parent) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
 
-  if (kind === 'zombie' || kind === 'giant') {
-    const giant = kind === 'giant';
-    const shirts = [0x6b5b4b, 0x4b5b6b, 0x5b6b4b, 0x7b4b4b];
-    const av = new Avatar(giant ? { zombie: true, skin: 0x6c7a52, shirt: 0x3d2f24, pants: 0x2a2420 } : { zombie: true, skin: 0x8fae7a, shirt: shirts[Math.floor(Math.random() * 4)], pants: 0x3a3a3a });
-    root.add(av.root);
-    let ring = null;
+  // 사람 모양 몬스터: 색과 체형으로 구분 (질주 = 마르고 빨간 옷, 독 = 보라 옷·빛나는 입, 자폭 = 뚱뚱하고 빛나는 배)
+  const HUMAN = {
+    zombie: [{ skin: 0x8fae7a, shirt: [0x6b5b4b, 0x4b5b6b, 0x5b6b4b, 0x7b4b4b][Math.floor(Math.random() * 4)], pants: 0x3a3a3a }, [1, 1, 1]],
+    runner: [{ skin: 0xb5c29a, shirt: 0x8a2b2b, pants: 0x2a2a30 }, [0.88, 1.03, 0.85]],
+    spitter: [{ skin: 0x7fa070, shirt: 0x4b2b5b, pants: 0x2f2a33 }, [1, 0.97, 1]],
+    bomber: [{ skin: 0x9aa86a, shirt: 0x6a6a3a, pants: 0x3a3a2a }, [1.35, 1, 1.35]],
+    giant: [{ skin: 0x6c7a52, shirt: 0x3d2f24, pants: 0x2a2420 }, [1, 1, 1]],
+  };
+  if (HUMAN[kind]) {
+    const giant = kind === 'giant', [look, sc] = HUMAN[kind];
+    const av = new Avatar({ zombie: true, ...look });
+    root.add(av.root); av.root.scale.set(...sc);
+    let ring = null, glow = null;
+    if (kind === 'bomber') { glow = add(new THREE.SphereGeometry(0.34, 14, 10), new THREE.MeshLambertMaterial({ color: 0xff7a20, emissive: 0xff5a00, emissiveIntensity: 0.6 }), 0, 1.12, -0.14, av.body); }
+    if (kind === 'spitter') { glow = add(new THREE.BoxGeometry(0.16, 0.07, 0.04), new THREE.MeshBasicMaterial({ color: 0x9cff3a }), 0, 1.63, -0.16, av.body); }
     if (giant) {
       av.root.scale.setScalar(MONSTERS.giant.scale);
       // 내려찍기 범위 표시 (예고 동안 점점 진해진다)
@@ -38,8 +47,31 @@ export function makeModel(kind) {
         if (w > 0) { av.armL.rotation.x = av.armR.rotation.x = -1.35 - 1.6 * w; av.body.rotation.x = 0.25 * w; }
         else if (atk) { av.armL.rotation.x = av.armR.rotation.x = -0.9; av.body.rotation.x = -0.35; }
         ring.material.opacity = w > 0 ? 0.25 + 0.6 * w : 0;
-      } else if (w > 0) { av.armL.rotation.x = av.armR.rotation.x = -1.35 - 1.2 * w; } // 좀비: 팔을 치켜든다
+      } else if (kind === 'bomber') { // 예고: 배가 부풀고 깜빡인다
+        const s = 1 + 0.6 * w; glow.scale.setScalar(s); glow.material.emissiveIntensity = 0.6 + (w > 0 ? 2 * Math.abs(Math.sin(m.st * 18)) : 0);
+      } else if (kind === 'spitter' && w > 0) { av.body.rotation.x = 0.4 * w; glow.scale.set(1, 1 + 2 * w, 1); } // 예고: 고개를 젖히고 입을 벌린다
+      else if (w > 0) { av.armL.rotation.x = av.armR.rotation.x = -1.35 - 1.2 * w; } // 좀비: 팔을 치켜든다
       root.visible = m.state !== 'dead' || m.st < 2.4;
+    } };
+  }
+
+  if (kind === 'hound') { // 네 발 짐승: 낮고 길다
+    const body = new THREE.Group(); root.add(body);
+    const fur = lam(0x4a3a30), dark = lam(0x2e241e);
+    add(new THREE.BoxGeometry(0.34, 0.32, 0.85), fur, 0, 0.62, 0.05, body);
+    add(new THREE.BoxGeometry(0.26, 0.26, 0.34), fur, 0, 0.78, -0.48, body);
+    add(new THREE.BoxGeometry(0.16, 0.12, 0.2), dark, 0, 0.72, -0.7, body);
+    for (const x of [-0.07, 0.07]) { add(new THREE.BoxGeometry(0.04, 0.03, 0.02), eyeMat, x, 0.83, -0.66, body); add(new THREE.ConeGeometry(0.05, 0.12, 4), dark, x * 1.2, 0.96, -0.42, body); }
+    add(new THREE.BoxGeometry(0.06, 0.06, 0.35), fur, 0, 0.75, 0.6, body).rotation.x = 0.6;
+    const legGeo = new THREE.BoxGeometry(0.09, 0.5, 0.09).translate(0, -0.25, 0);
+    const legs = [[-0.12, -0.28], [0.12, -0.28], [-0.12, 0.35], [0.12, 0.35]].map(([x, z]) => add(legGeo, dark, x, 0.5, z, body));
+    let phase = Math.random() * 6;
+    return { root, animate(dt, m) {
+      const dead = m.state === 'dead', leap = m.state === 'attack', w = m.state === 'windup' ? m.wp : 0;
+      phase += dt * (4 + m.mv * 2);
+      legs.forEach((l, i) => { l.rotation.x = dead ? 1.2 : leap ? (i < 2 ? -0.9 : 0.9) : Math.sin(phase + (i === 0 || i === 3 ? 0 : Math.PI)) * 0.6 * Math.min(1, m.mv / 3); });
+      body.position.y = dead ? -0.35 : -0.12 * w; body.rotation.x = leap ? -0.2 : 0.15 * w; body.rotation.z = dead ? 1.4 : 0;
+      root.visible = !dead || m.st < 2.4;
     } };
   }
 
@@ -109,7 +141,7 @@ function setState(m, s) { m.state = s; m.st = 0; }
 /** 피격: 추격·탐색 중이면 잠깐 멈칫한다 (거인은 헤드샷에만) */
 export function onHit(m, head) {
   if (m.state === 'dead') return;
-  if ((m.state === 'chase' || m.state === 'search') && (m.kind !== 'giant' || head)) setState(m, 'hit');
+  if ((m.state === 'chase' || m.state === 'search') && (!m.def.boss || head)) setState(m, 'hit');
 }
 
 /** W: { players: 살아 있는 플레이어, monsters, nav, physics, groundAt, hurt(p, dmg, m), sound(kind, x, y) } */
@@ -121,7 +153,7 @@ export function think(m, dt, W) {
   const flyer = m.kind === 'bat', ground = W.groundAt(m.x, m.y, flyer ? undefined : m.z);
   if (!t) { m.mv = 0; if (flyer) m.z += (ground + d.alt - m.z) * Math.min(1, dt); return; }
   const los = td < 70 && !W.physics.blocked(m.x, m.y, t.x, t.y);
-  if ((m.voiceT -= dt) <= 0) { m.voiceT = 4 + Math.random() * 7; if (m.kind === 'zombie') W.sound('groan', m.x, m.y); }
+  if ((m.voiceT -= dt) <= 0) { m.voiceT = 4 + Math.random() * 7; if (d.attack === 'melee' || d.attack === 'explode') W.sound('groan', m.x, m.y); }
   const toT = () => [(t.x - m.x) / (td || 1), (t.y - m.y) / (td || 1)];
   const toward = ([gx, gy]) => { const l = Math.hypot(gx - m.x, gy - m.y) || 1; return [(gx - m.x) / l, (gy - m.y) / l]; };
   // 목표가 같은 건물 위층이면 계단으로, 아니면 보이면 곧장·안 보이면 길찾기
@@ -145,20 +177,27 @@ export function think(m, dt, W) {
         sp = m.speed * Math.min(1, gd / 3 + 0.3);
       } else {
         [mx, my] = path();
-        const stop = m.kind === 'spider' ? 0.9 : d.range * 0.7;
-        sp = td < stop ? 0 : m.speed;
+        if (d.attack === 'spit' && los) { // 거리 유지: 가까우면 물러서고, 알맞으면 옆으로 돈다
+          if (td < d.keep * 0.7) { mx = -mx; my = -my; }
+          else if (td < d.keep * 1.3) { const s = m.id % 2 ? 1 : -1; [mx, my] = [-my * s, mx * s]; }
+        }
+        const run = d.rush && los && td < 40 ? d.rush : 1; // 거미: 사람을 보면 확 빨라진다
+        const stop = d.attack === 'leap' ? 0.9 : d.attack === 'spit' ? 0 : d.range * 0.7;
+        sp = td < stop ? 0 : m.speed * run;
       }
-      const dz = Math.abs(t.z - (flyer ? ground : m.z));
+      const dz = Math.abs(t.z - (flyer ? ground : m.z)), a = d.attack;
       const ready = m.cd <= 0 && los && (
-        m.kind === 'zombie' ? td <= d.range && dz < 2 :
-        m.kind === 'giant' ? td <= d.range :
-        m.kind === 'spider' ? td <= d.leap && dz < 3 :
+        a === 'melee' ? td <= d.range && dz < 2 :
+        a === 'slam' ? td <= d.range :
+        a === 'leap' ? td <= d.leap && dz < 3 :
+        a === 'spit' ? td <= d.range :
+        a === 'explode' ? td <= d.range && dz < 2.5 :
         td <= d.orbit + 4);
       if (ready) {
         setState(m, 'windup');
-        m.aim = { x: t.x, y: t.y, z: t.z + (flyer ? 1.1 : 0), id: t.id }; // 거미·박쥐·거인은 예고 시작 때 위치를 노린다 → 움직이면 피한다
-        if (m.kind === 'giant') { const k = Math.min(2.2, td); m.aim.x = m.x + (t.x - m.x) / (td || 1) * k; m.aim.y = m.y + (t.y - m.y) / (td || 1) * k; }
-        W.sound({ zombie: 'groan', spider: 'hiss', giant: 'roar', bat: 'screech' }[m.kind], m.x, m.y);
+        m.aim = { x: t.x, y: t.y, z: t.z + (flyer ? 1.1 : a === 'spit' ? 1.3 : 0), id: t.id }; // 예고 시작 때 위치를 노린다 → 움직이면 피한다
+        if (a === 'slam') { const k = Math.min(2.2, td); m.aim.x = m.x + (t.x - m.x) / (td || 1) * k; m.aim.y = m.y + (t.y - m.y) / (td || 1) * k; }
+        W.sound({ melee: 'groan', leap: 'hiss', slam: 'roar', dive: 'screech', spit: 'hiss', explode: 'beep' }[a], m.x, m.y);
       }
       break;
     }
@@ -166,10 +205,14 @@ export function think(m, dt, W) {
       const len = d.windup * m.windMul; m.wp = Math.min(1, m.st / len);
       if (m.st < len) break;
       setState(m, 'attack'); m.hitDone = false; m.wp = 0;
-      if (m.kind === 'zombie') { // 앞을 할퀸다: 그 사이 사거리 밖으로 물러나면 피한다
+      if (d.attack === 'melee') { // 앞을 할퀸다: 그 사이 사거리 밖으로 물러나면 피한다
         if (td <= d.range + 0.3 && !W.physics.blocked(m.x, m.y, t.x, t.y)) W.hurt(t, m.dmg, m);
         setState(m, 'recover');
-      } else if (m.kind === 'giant') { // 표시된 원 안에 있으면 맞는다
+      } else if (d.attack === 'spit') { // 노린 자리로 산성 침 (날아가는 동안 피할 수 있다)
+        W.spit?.(m, m.aim); setState(m, 'recover');
+      } else if (d.attack === 'explode') { // 자폭: 주변을 휩쓸고 자기도 죽는다
+        W.explode?.(m, null); return;
+      } else if (d.attack === 'slam') { // 표시된 원 안에 있으면 맞는다
         for (const p of W.players) if (Math.hypot(p.x - m.aim.x, p.y - m.aim.y) < d.aoe && Math.abs(p.z - m.z) < 3) W.hurt(p, m.dmg, m);
         W.sound('slam', m.x, m.y); W.shake?.(m.aim.x, m.aim.y);
         setState(m, 'recover');
@@ -198,7 +241,7 @@ export function think(m, dt, W) {
       return;
     }
     case 'recover':
-      if (m.st > (m.kind === 'giant' ? 1.0 : m.kind === 'bat' ? 0.8 : 0.45)) { setState(m, 'chase'); m.cd = d.cd * m.cdMul * (0.8 + Math.random() * 0.4); }
+      if (m.st > (d.boss ? 1.0 : flyer ? 0.8 : d.attack === 'spit' ? 0.5 : 0.45)) { setState(m, 'chase'); m.cd = d.cd * m.cdMul * (0.8 + Math.random() * 0.4); }
       if (flyer) { [mx, my] = toT(); mx = -mx; my = -my; sp = m.speed * 0.5; } // 박쥐는 다시 날아오른다
       break;
   }
@@ -238,5 +281,5 @@ export function think(m, dt, W) {
   // 바라보는 방향 (yaw 0 = 북쪽)
   const fx = m.state === 'windup' && m.aim ? m.aim.x : t.x, fy = m.state === 'windup' && m.aim ? m.aim.y : t.y;
   const want = Math.atan2(-(fx - m.x), fy - m.y);
-  m.yaw += Math.atan2(Math.sin(want - m.yaw), Math.cos(want - m.yaw)) * Math.min(1, dt * (m.kind === 'giant' ? 3 : 8));
+  m.yaw += Math.atan2(Math.sin(want - m.yaw), Math.cos(want - m.yaw)) * Math.min(1, dt * (d.boss ? 3 : 8));
 }

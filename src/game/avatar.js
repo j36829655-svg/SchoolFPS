@@ -29,14 +29,19 @@ export class Avatar {
     if (name) this.setName(name);
   }
 
-  setName(name) {
-    if (this.tag) this.root.remove(this.tag);
+  /** 머리 위 닉네임: 거리와 상관없이 같은 크기로 보이고, 벽 뒤에서도 보인다. color = 플레이어 색 */
+  setName(name, color = '#fff') {
+    if (this.tag) { this.root.remove(this.tag); this.tag.material.map.dispose(); this.tag.material.dispose(); }
+    this.tagName = name;
     const c = document.createElement('canvas'); c.width = 256; c.height = 64;
     const g = c.getContext('2d');
-    g.font = 'bold 34px sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(0,0,0,0.45)'; g.fillRect(0, 8, 256, 48);
+    g.font = 'bold 34px sans-serif'; g.textAlign = 'center';
+    const w = Math.min(250, g.measureText(name.slice(0, 12)).width + 28);
+    g.fillStyle = 'rgba(0,0,0,0.55)'; g.beginPath(); g.roundRect(128 - w / 2, 8, w, 48, 12); g.fill();
+    g.fillStyle = color; g.fillRect(128 - w / 2 + 8, 50, w - 16, 4);
     g.fillStyle = '#fff'; g.fillText(name.slice(0, 12), 128, 44);
-    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
-    this.tag.scale.set(1.4, 0.35, 1); this.tag.position.y = 2.25;
+    this.tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false, sizeAttenuation: false }));
+    this.tag.scale.set(0.24, 0.06, 1); this.tag.position.y = 2.2; this.tag.renderOrder = 20;
     this.root.add(this.tag);
   }
 

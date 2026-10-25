@@ -48,6 +48,9 @@ const SFX = {
   hiss: v => noise(5000, 0.5, 0.25 * v, 'highpass'),
   roar: v => { tone(70, 40, 1.2, 0.4 * v, 'sawtooth'); noise(300, 1.0, 0.3 * v); },
   screech: v => tone(2400, 3600, 0.35, 0.12 * v, 'square'),
+  beep: v => tone(1300, 1300, 0.12, 0.22 * v, 'square'),
+  splat: v => noise(900, 0.25, 0.35 * v, 'lowpass'),
+  boom: v => { tone(55, 20, 0.9, 0.8 * v, 'sine'); noise(600, 0.8, 0.7 * v); },
   slam: v => { tone(60, 25, 0.6, 0.6 * v, 'sine'); noise(400, 0.5, 0.5 * v); },
 };
 export function sfx(kind, v = 1) { if (v > 0.02) try { SFX[kind]?.(v); } catch {} }
