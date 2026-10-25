@@ -98,7 +98,7 @@ const game = new Game({
 }, hud);
 
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain, play: game,
+window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(),
   // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
   exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
   set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
@@ -199,10 +199,15 @@ addEventListener('mousemove', e => {
   yaw -= e.movementX * sens;
   pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * sens));
 });
-addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
+// 창 크기에 맞춘다. 앱 내장 브라우저처럼 resize 이벤트 없이 크기가 바뀌는 곳도 있어 매 프레임 확인한다
+function fitView() {
+  const w = innerWidth, h = innerHeight, c = renderer.domElement;
+  if (c.clientWidth === w && c.clientHeight === h && renderer.getPixelRatio() === Math.min(devicePixelRatio, 2)) return;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', fitView);
 
 // ── 루프 ──
 const devHud = $('hud');
@@ -210,6 +215,7 @@ const clock = new THREE.Clock();
 let fpsT = 0, frames = 0, fps = 0;
 
 function tick() {
+  fitView();
   const dt = Math.min(clock.getDelta(), 0.05);
   const inGame = game.active;
   const active = playing && (!inGame || game.canMove());
