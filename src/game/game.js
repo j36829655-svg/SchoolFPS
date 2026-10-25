@@ -40,7 +40,7 @@ export class Game {
     this.nextId = 1; this.round = 0; this.cleared = 0; this.phase = 'prep'; this.phaseT = ROUND.prep; this.queue = []; this.spawnCd = 0;
     this.msg = ''; this.msgT = 0; this.over = false; this.sendT = 0; this.navT = 0; this.now = 0; this.survive = 0; this.saved = null; this.mapT = 0;
     this.me = this.addPlayer(this.myId, name, COLORS[0]);
-    this.guns = guns; this.arsenal.reset(guns);
+    this.guns = guns; this.arsenal.reset([...guns, 'knife'], guns[0]); // 칼은 누구나 기본으로 가진다
     this.arsenal.visible = true;
     this.active = true;
     this.hud.show(true); this.hud.results(null);
@@ -79,7 +79,7 @@ export class Game {
   removePlayer(id) { const p = this.players.get(id); if (p?.avatar) this.ctx.scene.remove(p.avatar.root); this.players.delete(id); }
   canMove() { return this.active && this.me.alive && !this.over; }
   /** 이동 속도 배율 (조준 중·무거운 총) */
-  moveMul() { const d = this.arsenal.def; return (d?.moveMul ?? 1) * (1 - 0.4 * this.arsenal.aimT); }
+  moveMul() { const d = this.arsenal.def; return (d?.moveMul ?? 1) * (1 - 0.2 * this.arsenal.aimT); }
   get zombieMode() { return this.mode === 'zombie'; }
 
   // ───────────── 매 프레임 ─────────────
@@ -122,15 +122,17 @@ export class Game {
     const me = this.me, A = this.arsenal, d = A.def, c = A.cur, hud = this.hud;
     hud.health(me.hp, PLAYER.hp);
     let status = '';
-    if (A.reloading > 0) status = '재장전 중…';
+    if (d.melee) { hud.weapon({ name: d.name, kind: d.kind, ammo: '근접', reserve: '∞', status: '', owned: A.owned.map(id => WEAPON[id].slot), cur: d.slot }); }
+    if (d.melee) status = '';
+    else if (A.reloading > 0) status = '재장전 중…';
     else if (c.ammo === 0 && c.reserve === 0) status = A.owned.length > 1 ? '탄약 없음 — 숫자 키로 무기 교체' : '탄약 없음';
     else if (c.ammo === 0) status = 'R: 재장전';
     else if (c.ammo <= d.mag * 0.25) status = '탄약 부족';
     if (status && status !== this.lastStatus && status !== '재장전 중…') hud.note(status, 1200);
     this.lastStatus = status;
-    hud.weapon({ name: d.name, kind: d.kind, ammo: c.ammo, reserve: c.reserve, status, owned: A.owned.map(id => WEAPON[id].slot), cur: d.slot });
+    if (!d.melee) hud.weapon({ name: d.name, kind: d.kind, ammo: c.ammo, reserve: c.reserve, status, owned: A.owned.map(id => WEAPON[id].slot), cur: d.slot });
     const fov = this.ctx.camera.fov * Math.PI / 180, gap = Math.tan(A.spread(input.moving, input.sprint)) / Math.tan(fov / 2) * innerHeight / 2;
-    hud.cross(gap, this.canMove(), A.scoped, A.sighted && !A.scoped);
+    hud.cross(gap, this.canMove(), A.scoped, A.sighted && !A.scoped && d.m.sight === 'red');
     hud.stats(this.zombieMode ? `킬 ${me.kills}<br>점수 ${me.score.toLocaleString()}` : `킬 ${me.kills} · 데스 ${me.deaths}`);
     hud.board([...this.players.values()].sort((a, b) => b.score - a.score || b.kills - a.kills), input.board, this.zombieMode);
     // 위쪽: 라운드·남은 적 / 대전 점수
@@ -169,7 +171,7 @@ export class Game {
 
   // ───────────── 사격 ─────────────
   fire(moving, sprint) {
-    const A = this.arsenal, d = A.def, maxD = Math.min(400, d.range * 3), muzzle = A.muzzleWorld(), hits = new Map();
+    const A = this.arsenal, d = A.def, maxD = d.melee ? d.range : Math.min(400, d.range * 3), muzzle = A.muzzleWorld(), hits = new Map();
     let firstEnd = null;
     for (const { origin, dir } of A.rays(moving, sprint)) {
       let best = maxD, hit = null, point = null, normal = new THREE.Vector3(0, 1, 0);
@@ -192,19 +194,19 @@ export class Game {
       }
       const end = point ?? origin.clone().addScaledVector(dir, maxD);
       firstEnd ??= end;
-      if (d.pellets || Math.random() < 0.6) A.fx.tracer(muzzle, end);
+      if (!d.melee && (d.pellets || Math.random() < 0.6)) A.fx.tracer(muzzle, end);
       if (hit) {
         const f = best <= d.range ? 1 : Math.max(d.falloff, 1 - (1 - d.falloff) * (best - d.range) / d.range);
         const dmg = d.dmg * f * (hit.head ? d.head : 1), h = hits.get(hit.key) ?? { dmg: 0, head: false };
         h.dmg += dmg; h.head ||= hit.head; hits.set(hit.key, h);
         A.fx.burst(point, hit.kind === 'player' ? new THREE.Color(this.me.color).getHex() : BLOOD[hit.kind], hit.head ? 12 : 6);
-      } else if (point) {
+      } else if (point && !d.melee) {
         if (this.mode === 'pvp') A.fx.decal(point, normal, new THREE.Color(this.me.color).getHex(), 0.18);
         else A.fx.decal(point, normal);
         A.fx.burst(point, 0x9a958a, 4, 1.5);
       }
     }
-    this.net?.send({ t: 'shot', a: muzzle.toArray().map(v => +v.toFixed(2)), b: firstEnd.toArray().map(v => +v.toFixed(2)), w: d.id });
+    if (!d.melee) this.net?.send({ t: 'shot', a: muzzle.toArray().map(v => +v.toFixed(2)), b: firstEnd.toArray().map(v => +v.toFixed(2)), w: d.id });
     for (const [key, h] of hits) {
       this.hud.hitMarker(false, h.head); sfx(h.head ? 'head' : 'hit');
       if (this.isHost) this.damage(key, h.dmg, this.myId, h.head); else this.net.send({ t: 'hit', target: key, dmg: Math.round(h.dmg), head: h.head });
@@ -427,7 +429,7 @@ export class Game {
     const wasOver = this.over;
     if (m.mode !== this.mode) this.mode = m.mode;
     if (m.diff !== this.diffKey) { this.diffKey = m.diff; this.diff = DIFFICULTY[m.diff]; }
-    if (wasOver && !m.over && this.zombieMode) { this.arsenal.reset(this.guns); this.saved = null; this.cleared = 0; } // 방장이 다시 시작
+    if (wasOver && !m.over && this.zombieMode) { this.arsenal.reset([...this.guns, 'knife'], this.guns[0]); this.saved = null; this.cleared = 0; } // 방장이 다시 시작
     if (m.round !== this.round && m.phase === 'round') sfx('round');
     Object.assign(this, { round: m.round, phase: m.phase, phaseT: m.phaseT, left: m.left, msg: m.msg, over: m.over, survive: m.survive });
     if (m.cleared !== this.cleared) { if (m.cleared > this.cleared) sfx('clear'); this.cleared = m.cleared; this.syncUnlocks(); }

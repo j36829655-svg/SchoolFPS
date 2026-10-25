@@ -37,7 +37,7 @@ const css = `
 #ghud .scope:before,#ghud .scope:after{content:'';position:absolute;background:#000}
 #ghud .scope:before{left:50%;top:0;bottom:0;width:1px}
 #ghud .scope:after{top:50%;left:0;right:0;height:1px}
-#ghud .dot{position:absolute;inset:0;display:none;background:radial-gradient(circle at center,rgba(120,160,190,.06) 0,rgba(120,160,190,.06) 21vmin,rgba(12,14,16,.75) 21.3vmin,rgba(12,14,16,.75) 23vmin,transparent 23.3vmin)}
+#ghud .dot{position:absolute;inset:0;display:none}
 #ghud .dot:after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#ff2a2a;box-shadow:0 0 6px 1px #ff2a2a}
 #ghud .board{position:absolute;top:18%;left:50%;transform:translateX(-50%);min-width:380px;background:rgba(0,0,0,.7);padding:14px 18px;border-radius:8px;display:none;font-size:15px}
 #ghud .board td,#ghud .board th{padding:3px 12px}
@@ -51,7 +51,7 @@ const css = `
 #ghud .results .new{color:#fde047;font-weight:800}
 `;
 
-export const KEY_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '='];
+export const KEY_LABELS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', 'V'];
 
 export class Hud {
   constructor() {

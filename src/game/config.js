@@ -31,10 +31,12 @@ export const WEAPONS = [
     m: { L: 0.28, H: 0.06, rear: 0.09, barrel: [0.5, 0.009], hg: [0.2, 0.05, 'wood'], mag: ['straight', 0.12], stock: 'thumb', sight: 'scope', col: 0x26282a, col2: 0x7a4a28 }, snd: [1600, 0.45, 1, 70] },
   { id: 'm249', name: 'M249', kind: '경기관총', mode: 'auto', dmg: 25, rpm: 750, mag: 100, reserve: 200, reload: 4.5, spread: 0.034, recoil: 0.011, range: 75, falloff: 0.55, head: 2, ads: 55, flash: 0.18, moveMul: 0.85,
     m: { L: 0.34, H: 0.09, rear: 0.09, barrel: [0.38, 0.014], hg: [0.16, 0.07, 'shield'], mag: ['box', 0.12], stock: 'solid', sight: 'red', bipod: true, col: 0x262729 }, snd: [2000, 0.13, 0.75, 95] },
+  // 칼: 모두 기본으로 가진다. 탄약 없이 가까이(range m) 휘두른다
+  { id: 'knife', name: '전술 칼', kind: '근접', mode: 'melee', melee: true, dmg: 55, rpm: 110, mag: 0, reserve: 0, reload: 0, spread: 0, recoil: 0, range: 2.3, falloff: 1, head: 1.5, ads: 75, flash: 0, m: { knife: true }, snd: [0, 0, 0, 0] },
 ];
 export const WEAPON = Object.fromEntries(WEAPONS.map((w, i) => [w.id, { ...w, slot: i }]));
 export const LOADOUT = 2; // 시작할 때 고르는 총 수
-export const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal'];
+export const SLOT_KEYS = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'Minus', 'Equal', 'KeyV'];
 
 /* 몬스터
    hp·dmg·speed(m/s)·range(공격 거리)·cd(공격 주기)·windup(예고 동작 시간, 이 동안 피할 수 있다)

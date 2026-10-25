@@ -40,6 +40,7 @@ const SFX = {
   shell: () => noise(1600, 0.07, 0.3, 'bandpass', 2),
   pump: () => { noise(1200, 0.08, 0.4, 'bandpass', 2); noise(1500, 0.08, 0.4, 'bandpass', 2, 0.18); },
   switch: () => noise(3000, 0.05, 0.2, 'bandpass', 3),
+  swing: () => noise(1800, 0.2, 0.3, 'bandpass', 1.2),
   pickup: () => { tone(600, 900, 0.08, 0.15, 'triangle'); tone(900, 1300, 0.1, 0.15, 'triangle', 0.08); },
   round: () => { tone(220, 220, 0.5, 0.18, 'sawtooth'); tone(330, 330, 0.5, 0.12, 'sawtooth', 0.25); },
   clear: () => { tone(523, 523, 0.15, 0.15, 'triangle'); tone(659, 659, 0.15, 0.15, 'triangle', 0.15); tone(784, 784, 0.3, 0.15, 'triangle', 0.3); },
@@ -52,7 +53,8 @@ const SFX = {
 export function sfx(kind, v = 1) { if (v > 0.02) try { SFX[kind]?.(v); } catch {} }
 
 // ───────────── 총 ─────────────
-const HIP = new THREE.Vector3(0.16, -0.165, -0.3), HIP_PISTOL = new THREE.Vector3(0.14, -0.13, -0.33);
+const HIP = new THREE.Vector3(0.15, -0.16, -0.3), HIP_PISTOL = new THREE.Vector3(0.13, -0.13, -0.32), HIP_KNIFE = new THREE.Vector3(0.19, -0.19, -0.32);
+const sm = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const BASE_FOV = 75;
 
 export class Arsenal {
@@ -61,7 +63,7 @@ export class Arsenal {
     this.holder = new THREE.Group(); camera.add(this.holder);
     this.models = {}; this.guns = new Map(); this.id = null;
     this.cool = 0; this.reloading = 0; this.switchT = 0; this.kick = 0; this.aimT = 0; this.bloom = 0;
-    this.burstLeft = 0; this.pumpT = 0; this.prevTrigger = false; this.bob = 0; this.recoil = 0; this.recoilYaw = 0;
+    this.burstLeft = 0; this.pumpT = 0; this.fireT = 0; this.swingT = 0; this.runT = 0; this.swayX = 0; this.swayY = 0; this.prevTrigger = false; this.bob = 0; this.recoil = 0; this.recoilYaw = 0;
     // 총구 화염: 별 모양 스프라이트 + 잠깐 켜지는 조명 (조명은 항상 있어야 셰이더가 다시 컴파일되지 않는다)
     const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
     const grd = x.createRadialGradient(32, 32, 0, 32, 32, 32); grd.addColorStop(0, '#fff8e0'); grd.addColorStop(0.25, '#ffc860'); grd.addColorStop(1, 'rgba(255,120,20,0)');
@@ -105,7 +107,7 @@ export class Arsenal {
 
   startReload() {
     const d = this.def, c = this.cur;
-    if (!c || this.reloading > 0 || this.switchT > 0 || c.ammo >= d.mag || c.reserve <= 0) return;
+    if (!c || d.melee || this.reloading > 0 || this.switchT > 0 || c.ammo >= d.mag || c.reserve <= 0) return;
     this.reloading = d.reload; this.reloadLen = d.reload; this.burstLeft = 0;
     sfx(d.shell ? 'shell' : 'reload');
   }
@@ -126,11 +128,13 @@ export class Arsenal {
     this.flash.material.opacity = Math.max(0, this.flash.material.opacity - dt * 30);
     this.light.intensity = Math.max(0, this.light.intensity - dt * 120);
     const pressed = trigger && !this.prevTrigger; this.prevTrigger = trigger;
-    this.aimT += ((aim && this.reloading <= 0 && this.switchT <= 0 && !sprint ? 1 : 0) - this.aimT) * Math.min(1, dt * 9);
+    this.fireT = Math.max(0, this.fireT - dt); this.swingT = Math.max(0, this.swingT - dt);
+    this.aimT += ((aim && !d.melee && this.reloading <= 0 && this.switchT <= 0 ? 1 : 0) - this.aimT) * Math.min(1, dt * 9); // 달리면서도 조준된다
     this.setFov(BASE_FOV + (d.ads - BASE_FOV) * this.aimT);
     this.pose(dt, moving, sprint);
     if (this.switchT > 0) { this.switchT -= dt; return false; }
     if (this.pumpT > 0) { this.pumpT -= dt; if (this.pumpT <= 0.3 && this.pumpT + dt > 0.3) sfx('pump'); }
+    if (d.melee) { if (trigger && this.cool <= 0) { this.cool = 60 / d.rpm; this.swingT = 0.32; this.fireT = 0.4; sfx('swing'); return true; } return false; }
 
     if (this.reloading > 0) {
       if (d.shell && pressed && c.ammo > 0) this.reloading = 0; // 산탄총은 쏘면 재장전이 끊긴다
@@ -145,9 +149,9 @@ export class Arsenal {
     let want = d.mode === 'auto' ? trigger : pressed;
     if (d.mode === 'burst') { if (pressed && !this.burstLeft && this.cool <= 0) this.burstLeft = d.burst; want = this.burstLeft > 0; }
     if (d.mode === 'pump' && this.pumpT > 0) want = false;
-    if (!want || this.cool > 0 || sprint) return false;
+    if (!want || this.cool > 0) return false; // 달리면서도 쏠 수 있다
     if (c.ammo <= 0) { this.burstLeft = 0; if (pressed) { sfx('dry'); this.startReload(); } return false; }
-    c.ammo--; this.cool = 60 / d.rpm;
+    c.ammo--; this.cool = 60 / d.rpm; this.fireT = 0.4;
     if (d.mode === 'burst' && --this.burstLeft === 0) this.cool = d.burstDelay;
     if (d.mode === 'pump') this.pumpT = 0.75;
     this.kick = 1; this.bloom = Math.min(d.spread * 1.5, this.bloom + d.recoil * 0.25);
@@ -160,21 +164,46 @@ export class Arsenal {
 
   setFov(f) { if (Math.abs(this.camera.fov - f) > 0.05) { this.camera.fov = f; this.camera.updateProjectionMatrix(); } }
 
-  /** 1인칭 총 위치: 허리 ↔ 조준, 걸음 흔들림, 반동, 재장전·교체 동작 */
+  /** 1인칭 총 위치: 허리 ↔ 조준, 걸음·숨 흔들림, 시점을 늦게 따라오는 흔들림, 반동, 달리기, 교체,
+   *  재장전(탄창이 빠졌다 들어가는 동안 왼손이 탄창을 잡는다), 칼 휘두르기 */
   pose(dt, moving, sprint) {
-    const mdl = this.model, d = this.def, g = mdl.group;
-    const hip = mdl.pistol ? HIP_PISTOL : HIP, a = this.aimT;
-    this.bob += dt * (moving ? (sprint ? 13 : 9) : 2);
-    const bobA = (moving ? (sprint ? 0.022 : 0.012) : 0.002) * (1 - a * 0.85);
-    let x = hip.x * (1 - a), y = hip.y + (-mdl.sightY - hip.y) * a + Math.abs(Math.sin(this.bob)) * bobA, z = hip.z + (-0.22 - hip.z) * a + this.kick * 0.045;
-    let rx = this.kick * (mdl.pistol ? 0.18 : 0.06), ry = 0, rz = 0;
-    if (sprint) { rx -= 0.35; ry += 0.6; x -= 0.04; }
-    if (this.reloading > 0) { const p = d.shell ? 0.5 : Math.sin(Math.min(1, 1 - this.reloading / this.reloadLen) * Math.PI); rx -= 0.45 * p; rz += 0.5 * p; y -= 0.05 * p; }
-    if (this.switchT > 0) y -= this.switchT * 0.5;
-    g.position.set(x + Math.sin(this.bob * 0.5) * bobA, y, z); g.rotation.set(rx, ry, rz);
+    const mdl = this.model, d = this.def, g = mdl.group, a = this.aimT;
+    const hip = mdl.pistol ? HIP_PISTOL : mdl.knife ? HIP_KNIFE : HIP;
+    const run = sprint && a < 0.3 && this.fireT <= 0 && this.reloading <= 0; // 조준·사격 중이면 총을 내리지 않는다
+    this.runT += ((run ? 1 : 0) - this.runT) * Math.min(1, dt * 8);
+    this.bob += dt * (moving ? (sprint ? 12 : 8.5) : 1.6);
+    const cr = this.camera.rotation, k = Math.min(1, dt * 8), inv = 1 / Math.max(dt, 1e-3);
+    const dyaw = cr.y - (this.lastYaw ?? cr.y), dpitch = cr.x - (this.lastPitch ?? cr.x); this.lastYaw = cr.y; this.lastPitch = cr.x;
+    this.swayX += (Math.max(-0.03, Math.min(0.03, dyaw * inv * 0.006)) - this.swayX) * k;
+    this.swayY += (Math.max(-0.03, Math.min(0.03, dpitch * inv * 0.006)) - this.swayY) * k;
+    const amp = (moving ? (sprint ? 0.02 : 0.011) : 0.0025) * (1 - a * 0.85), sw = 1 - a * 0.7;
+    let x = hip.x * (1 - a) + Math.sin(this.bob * 0.5) * amp + this.swayX * sw;
+    let y = hip.y + (-mdl.sightY - hip.y) * a + Math.abs(Math.sin(this.bob)) * amp * 0.8 + Math.sin(this.bob * 0.5) * 0.0015 * (1 - a) + this.swayY * sw;
+    let z = hip.z + (-0.22 - hip.z) * a + this.kick * (a > 0.5 ? 0.03 : 0.05);
+    let rx = this.kick * (mdl.pistol ? 0.16 : 0.05) * (1 - a * 0.5), ry = this.swayX * 1.5, rz = -this.swayX * 2;
+    rx -= 0.35 * this.runT; ry += 0.55 * this.runT; x -= 0.03 * this.runT; y -= 0.03 * this.runT;
+    if (this.switchT > 0) { y -= this.switchT * 0.5; rx -= this.switchT * 1.2; }
+    // 재장전: hw = 왼손이 탄창 쪽으로 간 정도, mo = 탄창이 빠진 정도
+    let hw = 0, mo = 0;
+    if (this.reloading > 0) {
+      if (d.shell) hw = 1;
+      else { const q = 1 - this.reloading / this.reloadLen; hw = sm(0, 0.2, q) * (1 - sm(0.75, 0.95, q)); mo = sm(0.22, 0.38, q) * (1 - sm(0.5, 0.7, q)); }
+    }
+    rz += 0.35 * hw; rx -= 0.15 * hw;
+    if (mdl.mag) mdl.mag.position.y = mdl.magDrop * mo;
+    if (mdl.lhand) {
+      const t = mdl.magPos.clone(); t.y += mdl.magDrop * mo * 0.9;
+      if (d.shell) t.y += Math.sin(this.reloading / d.reload * Math.PI) * 0.02; // 한 발씩 밀어 넣는 손짓
+      mdl.lhand.position.lerpVectors(mdl.lhandHome, t, hw);
+    }
+    if (d.melee) { // 칼: 오른쪽 위에서 왼쪽 아래로 벤다
+      const e = Math.sin((this.swingT > 0 ? 1 - this.swingT / 0.32 : 0) * Math.PI);
+      x -= 0.16 * e; y += 0.03 * e; z -= 0.12 * e; ry += 0.9 * e; rz += 0.6 * e + 0.3; rx += 0.2 - 0.3 * e;
+    }
+    g.position.set(x, y, z); g.rotation.set(rx, ry, rz);
     if (mdl.slide) mdl.slide.position.z = this.kick * 0.035;
     if (mdl.pump) mdl.pump.position.z = this.pumpT > 0 ? Math.sin(Math.min(1, (0.75 - this.pumpT) / 0.5) * Math.PI) * 0.08 : 0;
-    g.visible = !this.sighted;
+    g.visible = !this.scoped; // 조준해도 총이 보인다 (저격 조준경으로 볼 때만 숨김)
   }
 
   /** 조준 광선들 (산탄총은 펠릿 수만큼) */

@@ -122,9 +122,9 @@ function showDiff() {
 document.querySelectorAll('#diff button').forEach(b => b.onclick = () => { diff = b.dataset.d; try { localStorage.setItem('cfps-diff', diff); } catch {} showDiff(); });
 showDiff();
 // 시작 총 고르기 (2자루). 고른 것은 다음에도 기억한다
-let loadout = (() => { try { const g = JSON.parse(localStorage.getItem('cfps-guns')); if (Array.isArray(g) && g.length === LOADOUT && g.every(id => WEAPON[id])) return g; } catch {} return ['glock', 'mp5']; })();
+let loadout = (() => { try { const g = JSON.parse(localStorage.getItem('cfps-guns')); if (Array.isArray(g) && g.length === LOADOUT && g.every(id => WEAPON[id] && !WEAPON[id].melee)) return g; } catch {} return ['glock', 'mp5']; })();
 function showLoadout() {
-  $('loadout').innerHTML = WEAPONS.map(w => `<button data-g="${w.id}" class="${loadout.includes(w.id) ? 'sel' : ''}">${w.name}<small>${w.kind}</small></button>`).join('');
+  $('loadout').innerHTML = WEAPONS.filter(w => !w.melee).map(w => `<button data-g="${w.id}" class="${loadout.includes(w.id) ? 'sel' : ''}">${w.name}<small>${w.kind}</small></button>`).join('');
   $('loadout').querySelectorAll('button').forEach(b => b.onclick = () => {
     const id = b.dataset.g;
     loadout = loadout.includes(id) ? loadout.filter(g => g !== id) : [...loadout, id].slice(-LOADOUT); // 3번째를 고르면 가장 먼저 고른 것이 빠진다
