@@ -230,6 +230,9 @@ def build(spec):
         st = spec['endStyle'] if (spec['endStyle'] and is_end) else style
         s = STYLE.get(st, S)
         holes = openings_for(st, L, ground, floors, fh, win_top)
+        if I and not holes and L >= 3:  # 들어갈 수 있는 건물인데 창이 없는 벽: 층마다 3 m 간격 창
+            k = max(1, int(L // 3))
+            holes = [(L * (j + 0.5) / k - 0.6, L * (j + 0.5) / k + 0.6, ground + f * fh + 0.9, ground + f * fh + min(2.2, fh - 0.4)) for f in range(floors) for j in range(k)]
         if I:  # 들어갈 수 있는 건물: 창 구멍이 벽 두께만큼 뚫리고, 정해진 자리에 열린 출입문
             holes = [(*hh[:4], hh[4] if len(hh) > 4 else 'glass', I['t']) for hh in holes]
             if i == I['door']['edge']:

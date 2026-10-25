@@ -12,7 +12,7 @@ const ROLE = {
   wood: c => ({ color: c, map: tiled('woodpanel', 2.5), roughness: 0.8 }),
   roof: c => ({ color: c, map: tiled('metalroof', 4), roughness: 0.75, metalness: 0.15 }),
   flatroof: c => ({ color: c, map: tiled('concrete', 6), roughness: 0.95 }),
-  glass: c => ({ color: c, roughness: 0.12, metalness: 0.35, envMapIntensity: 0.8 }),
+  glass: c => ({ color: c, roughness: 0.08, metalness: 0.2, envMapIntensity: 0.8, transparent: true, opacity: 0.32, depthWrite: false }), // 비쳐 보이는 유리: 안에서 밖이 보인다
   frame: c => ({ color: c, roughness: 0.4, metalness: 0.5 }),
   trim: c => ({ color: c, map: tiled('concrete', 3), roughness: 0.8 }),
   accent: c => ({ color: c, roughness: 0.7 }),
@@ -21,7 +21,7 @@ const ROLE = {
   paint3: c => ({ color: c, roughness: 0.5 }), paint4: c => ({ color: c, roughness: 0.5 }),
 };
 
-export async function loadModels(url = 'assets/models/buildings.glb?v=6f875932') {
+export async function loadModels(url = 'assets/models/buildings.glb?v=d2013c42') {
   const head = await fetch(url, { method: 'HEAD' }).catch(() => null);
   if (!head?.ok) return null;
   const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
