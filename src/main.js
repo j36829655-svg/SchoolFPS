@@ -103,7 +103,7 @@ const game = new Game({
 }, hud);
 
 // 디버그/테스트용 (브라우저 콘솔에서 game.body 등으로 접근). view.flyHeight = 비행 높이(절대)
-window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(), get touch() { return touch; }, interior: { floorAt, ceilAt, INTERIORS, doorPoints, groundAt, inWater },
+window.game = { body, physics, camera, scene, terrain, play: game, fit: () => fitView(), get touch() { return touch; }, get yaw() { return yaw; }, interior: { floorAt, ceilAt, INTERIORS, doorPoints, groundAt, inWater },
   // 개발용: 건물 사양을 tools/blender/spec.json 으로 저장 (로컬 서버에서만 동작)
   exportSpecs: () => fetch('/__save?file=spec.json', { method: 'POST', body: JSON.stringify(BUILDING_SPECS) }),
   set view(v) { ({ yaw, pitch, flying } = { yaw, pitch, flying, ...v }); if (v.flyHeight !== undefined) flyZ = v.flyHeight; } };
@@ -236,7 +236,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) relea
 // '플레이 중' 여부는 직접 관리하고, 잠금이 없으면 마우스 버튼을 누른 채 끌어서 시점을 돌린다.
 let playing = false, dragging = false;
 function setPlaying(v) {
-  playing = v; touch.show(v);
+  playing = v; touch.show(v); cursor = null;
   if (v) document.activeElement?.blur?.(); // 메뉴 버튼에 포커스가 남으면 Space(점프)가 버튼을 다시 누른다
   startEl.style.display = v ? 'none' : 'flex';
   $('cross').style.display = game.active ? 'none' : ''; // 게임 중에는 HUD 조준점을 쓴다
@@ -253,10 +253,19 @@ addEventListener('keydown', e => { if (e.code === 'Escape' && playing && !docume
 renderer.domElement.addEventListener('mousedown', e => { dragging = true; if (e.button === 0 && playing) fireHeld = true; if (e.button === 2 && playing) aimHeld = true; });
 addEventListener('mouseup', e => { dragging = false; if (e.button === 0) fireHeld = false; if (e.button === 2) aimHeld = false; });
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
-addEventListener('wheel', e => { if (playing && game.active) cycleDir = Math.sign(e.deltaY); }, { passive: true });
+// 터치패드 두 손가락 스크롤은 휠 이벤트가 쏟아지므로 0.3초에 한 번만 무기를 바꾼다
+let wheelT = 0;
+addEventListener('wheel', e => { const now = performance.now(); if (playing && game.active && Math.abs(e.deltaY) > 20 && now - wheelT > 300) { wheelT = now; cycleDir = Math.sign(e.deltaY); } }, { passive: true });
+// 감도 (메뉴에서 조절, 터치패드는 보통 높게)
+let mouseSens = +(localStorage.getItem('cfps-sens') || 1);
+$('sens').value = mouseSens; $('sens').oninput = () => { mouseSens = +$('sens').value; try { localStorage.setItem('cfps-sens', mouseSens); } catch {} };
+// 마우스 잠금이 없을 때(앱 내장 브라우저 등): 클릭 없이 커서를 움직이면 시점이 돌고, 커서가 화면 가장자리에 있으면 계속 돈다 (터치패드용)
+let cursor = null;
+document.addEventListener('mouseleave', () => { cursor = null; });
 addEventListener('mousemove', e => {
-  if (!playing || (!document.pointerLockElement && !dragging)) return;
-  const sens = 0.0022 * camera.fov / 75; // 조준(확대) 중에는 감도도 낮춘다
+  if (!playing) return;
+  cursor = document.pointerLockElement ? null : [e.clientX, e.clientY];
+  const sens = 0.0022 * mouseSens * camera.fov / 75; // 조준(확대) 중에는 감도도 낮춘다
   yaw -= e.movementX * sens;
   pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * sens));
 });
@@ -279,6 +288,11 @@ function tick() {
   fitView();
   if (keys.size && !document.hasFocus()) releaseAll(); // blur 이벤트 없이 포커스가 넘어가는 앱 내장 브라우저 대비
   const dt = Math.min(clock.getDelta(), 0.05);
+  if (playing && cursor && !document.pointerLockElement) { // 가장자리 회전: 커서가 화면 양옆 8%·위아래 10% 안에 있으면 그쪽으로 계속 돈다
+    const ex = innerWidth * 0.08, ey = innerHeight * 0.1, k = 2.4 * mouseSens * dt;
+    if (cursor[0] < ex) yaw += k * (1 - cursor[0] / ex); else if (cursor[0] > innerWidth - ex) yaw -= k * (1 - (innerWidth - cursor[0]) / ex);
+    if (cursor[1] < ey) pitch = Math.min(1.5, pitch + k * 0.6 * (1 - cursor[1] / ey)); else if (cursor[1] > innerHeight - ey) pitch = Math.max(-1.5, pitch - k * 0.6 * (1 - (innerHeight - cursor[1]) / ey));
+  }
   const inGame = game.active;
   const active = playing && (!inGame || game.canMove());
 
