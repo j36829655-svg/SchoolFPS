@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CAMPUS } from './data/campus.js';
-import { PROPS, HEDGES, GUARDRAILS, AZALEA_ROADS, CARS, PAVINGS, SIDEWALKS, SHRUB_BALLS, STREET, BRICK_WALLS, PARTS } from './data/details.js';
+import { PROPS, HEDGES, GUARDRAILS, AZALEA_ROADS, CARS, PAVINGS, SIDEWALKS, SHRUB_BALLS, STREET, BRICK_WALLS, PARTS, POLE_ROADS } from './data/details.js';
 import { signedDist } from './terrain.js';
 
 // 로드뷰에서 본 소품·조경. 모든 소품은 지형 높이에 놓이고, 부딪힐 만한 것은 충돌체를 가진다.
@@ -9,7 +9,7 @@ const M = c => new THREE.MeshLambertMaterial({ color: c });
 const MAT = {
   wood: M(0x8a6240), darkWood: M(0x5b4330), metal: M(0x4a4f55), concrete: M(0xa8a8a2), red: M(0xc0262b),
   glass: new THREE.MeshLambertMaterial({ color: 0x9fb8c8, transparent: true, opacity: 0.5 }),
-  rock: new THREE.MeshLambertMaterial({ color: 0xe8e6e0, flatShading: true }), hedge: new THREE.MeshLambertMaterial({ color: 0x3d6b33, flatShading: true }),
+  rock: new THREE.MeshLambertMaterial({ color: 0xe8e6e0, flatShading: true }), stone: new THREE.MeshLambertMaterial({ color: 0x8d8b86, flatShading: true }), hedge: new THREE.MeshLambertMaterial({ color: 0x3d6b33, flatShading: true }),
   pineLeaf: new THREE.MeshLambertMaterial({ color: 0x3e6b3a, flatShading: true }), metaLeaf: new THREE.MeshLambertMaterial({ color: 0x6f8f4a, flatShading: true }),
   white: M(0xf2f2ee), rail: M(0xc9cdd1), wire: new THREE.LineBasicMaterial({ color: 0x222222 }),
 };
@@ -21,8 +21,10 @@ const BUILDERS = {
     box(0.06, 0.45, 0.4, MAT.metal, -0.7, 0.22, 0), box(0.06, 0.45, 0.4, MAT.metal, 0.7, 0.22, 0)),
   table: () => grp(box(1.8, 0.06, 0.8, MAT.wood, 0, 0.75, 0), box(1.8, 0.05, 0.3, MAT.wood, 0, 0.45, 0.65), box(1.8, 0.05, 0.3, MAT.wood, 0, 0.45, -0.65),
     box(0.08, 0.75, 1.6, MAT.darkWood, -0.7, 0.37, 0), box(0.08, 0.75, 1.6, MAT.darkWood, 0.7, 0.37, 0)),
+  flag: () => grp(cyl(0.05, 0.07, 8, MAT.white, 0, 4, 0), box(1.1, 0.7, 0.02, MAT.white, 0.57, 7.5, 0), cyl(0.09, 0.09, 0.1, MAT.metal, 0, 8.05, 0)), // 깃대 8 m + 깃발
   booth: () => grp(box(0.95, 2.3, 0.95, MAT.red, 0, 1.15, 0), box(0.8, 1.5, 0.97, MAT.glass, 0, 1.3, 0), box(0.97, 1.5, 0.8, MAT.glass, 0, 1.3, 0), box(1.05, 0.12, 1.05, MAT.red, 0, 2.36, 0)),
-  rock: () => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), MAT.rock); m.scale.set(2.2, 1.3, 1.1); m.position.y = 0.9; return m; },
+  // 바위 화단: 낮은 연석 안에 회색 돌 여러 개와 작은 관목 (로드뷰 00:36)
+  rock: () => { const g = grp(cyl(2.4, 2.4, 0.25, MAT.concrete, 0, 0.12, 0, 20)); for (let i = 0; i < 11; i++) { const a = i * 2.4, r = 0.4 + (i * 0.37) % 1.6, s = 0.35 + (i * 0.29) % 0.4, m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), i % 4 === 3 ? MAT.hedge : MAT.stone); m.position.set(Math.cos(a) * r, 0.25 + s * 0.5, Math.sin(a) * r); m.scale.set(s * 1.4, s, s * 1.1); m.rotation.y = a; g.add(m); } return g; },
   stoneSign: () => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 0), new THREE.MeshLambertMaterial({ color: 0x55585c, flatShading: true })); m.scale.set(1.4, 0.8, 0.5); m.position.y = 0.55; return m; },
   signpost: () => grp(cyl(0.07, 0.07, 2.4, MAT.darkWood, 0, 1.2, 0), box(0.7, 0.16, 0.04, MAT.wood, 0.3, 2.1, 0), box(0.7, 0.16, 0.04, MAT.wood, -0.25, 1.85, 0.03), box(0.7, 0.16, 0.04, MAT.wood, 0.25, 1.6, 0)),
   steps: () => grp(box(4, 0.2, 2.4, MAT.concrete, 0, 0.1, 0), box(4, 0.2, 1.6, MAT.concrete, 0, 0.3, -0.4), box(4, 0.2, 0.8, MAT.concrete, 0, 0.5, -0.8)),
@@ -55,9 +57,9 @@ export function buildProps(scene, physics, terrain) {
   const roadSegs = CAMPUS.roads.flatMap(r => r.pts.slice(1).map((p, i) => [...r.pts[i], ...p, r.w / 2]));
   const solids = [...CAMPUS.buildings, ...PARTS, ...CAMPUS.greenhouses].map(b => b.pts).concat(CAMPUS.grounds.filter(g => g.type === 'water').map(g => g.pts));
   clashes = (x, y, m) => roadSegs.some(([ax, ay, bx, by, hw]) => segDist(x, y, ax, ay, bx, by) < hw + m) || solids.some(p => signedDist(x, y, p) < m);
-  const solid = { rock: 1.4, booth: 0.6, pine: 0.35, metaseq: 0.45, signpost: 0.15, stoneSign: 0.6 };
+  const solid = { rock: 1.4, booth: 0.6, flag: 0.1, pine: 0.35, metaseq: 0.45, signpost: 0.15, stoneSign: 0.6 };
   for (const [kind, x, y, deg] of PROPS) {
-    if (!['steps', 'stoneSign', 'deck'].includes(kind) && clashes(x, y, 0.8)) continue;
+    if (!['steps', 'stoneSign', 'deck', 'booth', 'rock'].includes(kind) && clashes(x, y, 0.8)) continue; // 부스·바위 화단은 로드뷰(00:33~00:36)에서 연석 바로 옆으로 확인
     place(BUILDERS[kind](), x, y, deg);
     if (solid[kind]) physics.addCircle(x, y, solid[kind]);
   }
@@ -92,20 +94,23 @@ export function buildProps(scene, physics, terrain) {
   instanced(scene, new THREE.IcosahedronGeometry(0.55, 1), new THREE.MeshLambertMaterial({ color: 0xd9559a }), azaleas, ([x, y], m, i) =>
     m.compose(new THREE.Vector3(x, hAt(x, y) + 0.45, -y), new THREE.Quaternion(), new THREE.Vector3(1.2, 0.7 + (i % 3) * 0.1, 1)));
 
-  // 전봇대 + 전선, 가로등 — 교내 도로를 따라
+  // 전봇대 + 전선 (도로 목록은 details.js POLE_ROADS), 가로등 — 교내 도로를 따라
   const campusRoad = CAMPUS.roads.find(r => r.name === '교내 도로').pts;
-  const poles = alongPolyline(campusRoad, 34, 5), lamps = alongPolyline(campusRoad, 40, -4.5, 17);
-  let prev = null;
-  for (const [x, y] of poles) {
-    place(grp(cyl(0.14, 0.2, 10, MAT.concrete, 0, 5, 0), box(1.8, 0.12, 0.12, MAT.metal, 0, 9.2, 0)), x, y);
-    physics.addCircle(x, y, 0.25);
-    const top = new THREE.Vector3(x, hAt(x, y) + 9.1, -y);
-    if (prev) for (const off of [-0.8, 0.8]) {
-      const a = prev.clone().add(new THREE.Vector3(off, 0, 0)), b = top.clone().add(new THREE.Vector3(off, 0, 0));
-      const mid = a.clone().lerp(b, 0.5); mid.y -= 0.9; // 늘어진 전선
-      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(8)), MAT.wire));
+  const lamps = alongPolyline(campusRoad, 40, -4.5, 17);
+  for (const pr of POLE_ROADS) {
+    let prev = null;
+    for (const [x, y] of alongPolyline(CAMPUS.roads.find(r => r.name === pr.road).pts, pr.every, pr.off)) {
+      if (solids.some(p => signedDist(x, y, p) < 1)) { prev = null; continue; } // 건물·연못 위면 건너뛰고 전선도 끊는다
+      place(grp(cyl(0.14, 0.2, 10, MAT.concrete, 0, 5, 0), box(1.8, 0.12, 0.12, MAT.metal, 0, 9.2, 0)), x, y);
+      physics.addCircle(x, y, 0.25);
+      const top = new THREE.Vector3(x, hAt(x, y) + 9.1, -y);
+      if (prev) for (const off of [-0.8, 0.8]) {
+        const a = prev.clone().add(new THREE.Vector3(off, 0, 0)), b = top.clone().add(new THREE.Vector3(off, 0, 0));
+        const mid = a.clone().lerp(b, 0.5); mid.y -= 0.9; // 늘어진 전선
+        scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(8)), MAT.wire));
+      }
+      prev = top;
     }
-    prev = top;
   }
   for (const [x, y, ang] of lamps) {
     const g = grp(cyl(0.07, 0.1, 5, MAT.metal, 0, 2.5, 0), box(1.2, 0.08, 0.08, MAT.metal, 0.6, 4.95, 0), box(0.5, 0.15, 0.25, MAT.white, 1.15, 4.85, 0));
