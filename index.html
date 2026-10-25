@@ -22,7 +22,8 @@
   #menu small { display: block; margin-top: 12px; opacity: .6; line-height: 1.6; }
   #menu .hidden { display: none; }
   #menu #diff button { padding: 8px; font-size: 14px; }
-  #menu #diff button.sel { background: #e11d48; }
+  #menu #diff button.sel, #menu #lobbyMode button.sel, #menu #lobbyDiff button.sel { background: #e11d48; }
+  #menu #lobbyMode button, #menu #lobbyDiff button { padding: 8px; font-size: 14px; }
 </style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }</script>
 </head>
@@ -42,10 +43,24 @@
     <div class="row" id="diff"><button data-d="easy">쉬움</button><button data-d="normal">보통</button><button data-d="hard">어려움</button></div>
     <div id="best" style="font-size:12px;opacity:.7;min-height:15px"></div>
     <button id="solo" class="primary">무한 생존 (혼자)</button>
-    <div class="row"><button id="hostZombie">방 만들기: 협동 생존</button><button id="hostPvp">방 만들기: 대전</button></div>
-    <div class="row"><input id="code" maxlength="4" placeholder="방 코드" style="margin:5px 0"><button id="join">참가</button></div>
+    <div class="row"><button id="host">방 만들기 (멀티)</button><input id="code" maxlength="4" placeholder="방 코드" style="margin:5px 0"><button id="join">참가</button></div>
     <button id="explore">자유 탐색 (맵 둘러보기)</button>
     <div id="status" class="status"></div>
+  </div>
+  <div id="lobby" class="hidden">
+    <div style="font-size:13px;opacity:.75">방 코드 — 친구에게 알려 주세요</div>
+    <div id="lobbyCode" style="font-size:44px;font-weight:800;letter-spacing:10px;margin:2px 0 10px;color:#fde047">----</div>
+    <div style="font-size:13px;opacity:.75">들어온 사람 <b id="lobbyCount">1</b>명</div>
+    <div id="lobbyPlayers" style="margin:6px 0 12px;line-height:1.7"></div>
+    <div id="lobbyHostOpts">
+      <div style="font-size:13px;opacity:.8">모드</div>
+      <div class="row" id="lobbyMode"><button data-m="zombie">협동 생존</button><button data-m="pvp">대전</button></div>
+      <div style="font-size:13px;opacity:.8">난이도</div>
+      <div class="row" id="lobbyDiff"><button data-d="easy">쉬움</button><button data-d="normal">보통</button><button data-d="hard">어려움</button></div>
+      <button id="lobbyStart" class="primary">모두 들어왔으면 시작</button>
+    </div>
+    <div id="lobbyInfo" class="status"></div>
+    <button id="lobbyLeave">나가기</button>
   </div>
   <small>WASD 이동 · Shift 달리기 · Space 점프 · 왼쪽 클릭 쏘기 · 오른쪽 클릭 조준 · R 재장전<br>숫자 1~0, -, = 무기 선택 · 휠/Q 무기 바꾸기 · Tab 점수판 · Esc 일시 정지<br>자유 탐색에서 F: 비행 (바라보는 방향으로 날기 · Space/E 위 · C/Q 아래)</small>
 </div></div>

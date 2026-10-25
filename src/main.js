@@ -131,27 +131,60 @@ $('explore').onclick = () => { game.stop(); begin('explore'); };
 $('resume').onclick = () => setPlaying(true);
 $('restart').onclick = () => { game.restart(); setPlaying(true); };
 $('leave').onclick = () => { game.stop(); mode = null; ['resume', 'leave', 'restart'].forEach(id => $(id).classList.add('hidden')); status(''); showDiff(); };
-async function hostRoom(m) {
+// ── 대기실: 방장이 방을 만들면 코드가 나오고, 친구들이 들어온 것을 확인한 뒤 방장이 모드·난이도를 골라 시작한다 ──
+const MODE_NAME = { zombie: '협동 생존', pvp: '대전' };
+let lobby = null; // { net, code, host, players: Map(id → 이름), mode, diff }
+function showLobby(v) { $('main').classList.toggle('hidden', v); $('lobby').classList.toggle('hidden', !v); }
+function renderLobby() {
+  const L = lobby; if (!L) return;
+  $('lobbyCode').textContent = L.code;
+  $('lobbyCount').textContent = L.players.size;
+  $('lobbyPlayers').innerHTML = [...L.players.entries()].map(([id, n]) => `<div>${id === 'host' ? '👑 ' : '• '}${n.replace(/</g, '&lt;')}</div>`).join('');
+  $('lobbyHostOpts').classList.toggle('hidden', !L.host);
+  document.querySelectorAll('#lobbyMode button').forEach(b => b.classList.toggle('sel', b.dataset.m === L.mode));
+  document.querySelectorAll('#lobbyDiff button').forEach(b => { b.classList.toggle('sel', b.dataset.d === L.diff); b.disabled = L.mode === 'pvp'; b.style.opacity = L.mode === 'pvp' ? 0.4 : 1; });
+  $('lobbyStart').textContent = `${L.players.size}명으로 시작`;
+  $('lobbyInfo').textContent = L.host ? (L.players.size < 2 ? '친구가 들어오기를 기다리는 중…' : '모두 들어왔으면 시작을 누르세요') :
+    `모드: ${MODE_NAME[L.mode]}${L.mode === 'zombie' ? ' · 난이도: ' + DIFFICULTY[L.diff].name : ''}\n방장이 시작하기를 기다리는 중…`;
+}
+/** 방장: 대기실 상태를 모두에게 알린다 */
+function syncLobby() { const L = lobby; L.net.send({ t: 'lobby', players: [...L.players.entries()], mode: L.mode, diff: L.diff }); renderLobby(); }
+function leaveLobby(msg = '') { lobby?.net.close(); lobby = null; showLobby(false); status(msg); }
+function startRoomGame(m, d) {
+  const L = lobby; lobby = null; showLobby(false); status('');
+  game.start({ mode: m, net: L.net, name: playerName(), diff: d });
+  game.onHostLeft = () => { game.stop(); mode = null; ['resume', 'leave', 'restart'].forEach(id => $(id).classList.add('hidden')); setPlaying(false); status('방장이 방을 닫았어요'); };
+  begin(L.host ? m : 'client');
+}
+$('host').onclick = async () => {
   try {
     status('방 만드는 중…');
     const net = new Net(), code = await net.host();
-    game.start({ mode: m, net, name: playerName(), diff });
-    status(`방 코드: ${code}\n친구에게 알려 주세요`);
-    begin(m);
-    hud.feed(`방 코드 ${code}`);
+    lobby = { net, code, host: true, players: new Map([['host', playerName()]]), mode: 'zombie', diff };
+    net.onMessage = (from, m) => { if (m.t === 'hello' && lobby) { lobby.players.set(from, String(m.name || '플레이어').slice(0, 12)); syncLobby(); } };
+    net.onLeave = id => { if (lobby) { lobby.players.delete(id); syncLobby(); } };
+    status(''); showLobby(true); renderLobby();
   } catch (e) { status('방을 만들지 못했어요: ' + (e.message || e)); }
-}
-$('hostZombie').onclick = () => hostRoom('zombie');
-$('hostPvp').onclick = () => hostRoom('pvp');
+};
+document.querySelectorAll('#lobbyMode button').forEach(b => b.onclick = () => { lobby.mode = b.dataset.m; syncLobby(); });
+document.querySelectorAll('#lobbyDiff button').forEach(b => b.onclick = () => { lobby.diff = b.dataset.d; syncLobby(); });
+$('lobbyStart').onclick = () => { const L = lobby; L.net.send({ t: 'start', mode: L.mode, diff: L.diff }); startRoomGame(L.mode, L.diff); };
+$('lobbyLeave').onclick = () => leaveLobby();
 $('join').onclick = async () => {
   const code = $('code').value.trim();
   if (code.length !== 4) return status('4자리 방 코드를 입력하세요');
   try {
     status('연결 중…');
     const net = new Net(); await net.join(code);
-    game.start({ mode: 'zombie', net, name: playerName() }); // 실제 모드는 방장이 보내는 상태로 바뀐다
-    status(`방 ${code.toUpperCase()}에 참가했어요`);
-    begin('client');
+    lobby = { net, code: code.toUpperCase(), host: false, players: new Map(), mode: 'zombie', diff: 'normal' };
+    net.onMessage = (from, m) => {
+      if (!lobby) return;
+      if (m.t === 'lobby') { lobby.players = new Map(m.players); lobby.mode = m.mode; lobby.diff = m.diff; renderLobby(); }
+      if (m.t === 'start') startRoomGame(m.mode, m.diff); // 방장이 시작 (이미 시작한 방이면 바로 들어간다)
+    };
+    net.onLeave = () => leaveLobby('방장이 방을 닫았어요');
+    net.send({ t: 'hello', name: playerName() });
+    status(''); showLobby(true); renderLobby();
   } catch (e) { status('참가하지 못했어요: ' + (e.message || e)); }
 };
 
@@ -161,7 +194,7 @@ let fireHeld = false, aimHeld = false, reloadPressed = false, restartPressed = f
 addEventListener('keydown', e => {
   if (document.activeElement?.tagName === 'INPUT') return;
   keys.add(e.code);
-  if (e.code === 'Tab') e.preventDefault();
+  if (e.code === 'Tab' || (playing && /^(Arrow|Space)/.test(e.code))) e.preventDefault(); // 화면 스크롤·버튼 눌림 방지
   if (e.code === 'KeyR') { reloadPressed = true; restartPressed = true; }
   const slot = SLOT_KEYS.indexOf(e.code); if (slot >= 0) slotPressed = slot;
   if (e.code === 'KeyQ' && mode !== 'explore') cycleDir = 1;
@@ -172,11 +205,16 @@ addEventListener('keydown', e => {
   }
 });
 addEventListener('keyup', e => keys.delete(e.code));
+// 키를 누른 채 포커스가 게임 밖으로 나가면 keyup이 오지 않아 한쪽으로 계속 걷는다 → 포커스를 잃으면 모두 뗀 것으로 본다
+const releaseAll = () => { keys.clear(); fireHeld = aimHeld = false; };
+addEventListener('blur', releaseAll);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 // 마우스 잠금이 안 되는 환경(일부 브라우저, 앱 내장 브라우저)에서도 움직일 수 있게
 // '플레이 중' 여부는 직접 관리하고, 잠금이 없으면 마우스 버튼을 누른 채 끌어서 시점을 돌린다.
 let playing = false, dragging = false;
 function setPlaying(v) {
   playing = v;
+  if (v) document.activeElement?.blur?.(); // 메뉴 버튼에 포커스가 남으면 Space(점프)가 버튼을 다시 누른다
   startEl.style.display = v ? 'none' : 'flex';
   $('cross').style.display = game.active ? 'none' : ''; // 게임 중에는 HUD 조준점을 쓴다
   $('pauseNote').textContent = !v && game.active ? (game.net ? '멀티플레이 중에는 게임이 멈추지 않아요' : '일시 정지') : '';
@@ -216,6 +254,7 @@ let fpsT = 0, frames = 0, fps = 0;
 
 function tick() {
   fitView();
+  if (keys.size && !document.hasFocus()) releaseAll(); // blur 이벤트 없이 포커스가 넘어가는 앱 내장 브라우저 대비
   const dt = Math.min(clock.getDelta(), 0.05);
   const inGame = game.active;
   const active = playing && (!inGame || game.canMove());

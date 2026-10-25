@@ -45,8 +45,12 @@ export class Game {
     this.hud.show(true); this.hud.results(null);
     if (net) {
       net.onMessage = (from, m) => this.onMessage(from, m);
-      net.onLeave = id => { this.removePlayer(id); this.hud.feed('누군가 나갔어요'); };
-      net.onJoin = () => { if (this.isHost) this.hud.feed('새 플레이어 참가'); };
+      net.onLeave = id => {
+        if (id === 'host' && !this.isHost) { this.onHostLeft?.(); return; }
+        const p = this.players.get(id); this.removePlayer(id); this.hud.feed(`${p?.name ?? '누군가'} 나감`);
+      };
+      // 게임 중에 들어온 사람은 대기실을 거치지 않고 바로 같은 판으로 들어온다
+      net.onJoin = id => { if (this.isHost) net.send({ t: 'start', mode: this.mode, diff: this.diffKey }, id); };
     }
     if (this.isHost) this.respawn(this.me);
   }
